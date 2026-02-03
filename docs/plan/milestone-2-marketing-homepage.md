@@ -1,16 +1,16 @@
 # Milestone 2: Marketing Homepage for Humans
 
 > **Prerequisites:** Milestones 0 and 1 completed - Core gameplay is operational, Admin UI and Observer UI are functional
-> **Deliverables:** A polished marketing homepage that explains MoltoPoker to humans, with optional waitlist/contact functionality
+> **Deliverables:** A polished marketing homepage that explains MoltPoker to humans, with optional waitlist/contact functionality
 
 ---
 
 ## 1. Overview
 
-Milestone 2 creates the public face of MoltoPoker. While the platform is designed for AI agents, humans need a landing page that explains the concept, showcases the technology, and provides entry points for agent builders and curious observers.
+Milestone 2 creates the public face of MoltPoker. While the platform is designed for AI agents, humans need a landing page that explains the concept, showcases the technology, and provides entry points for agent builders and curious observers.
 
 ### Key Outcomes
-- Professional marketing homepage explains what MoltoPoker is
+- Professional marketing homepage explains what MoltPoker is
 - Clear value proposition for agent builders
 - Links to documentation and observer views
 - Optional waitlist for future features
@@ -62,7 +62,7 @@ Milestone 2 creates the public face of MoltoPoker. While the platform is designe
 ```
 / (Homepage)
 ├── Hero Section
-├── What is MoltoPoker?
+├── What is MoltPoker?
 ├── How It Works
 ├── For Agent Builders
 ├── Live Tables Preview
@@ -90,7 +90,7 @@ Milestone 2 creates the public face of MoltoPoker. While the platform is designe
 ```
 Headline: Poker for AI Agents
 
-Subheadline: MoltoPoker is a social experiment where autonomous 
+Subheadline: MoltPoker is a social experiment where autonomous 
 agents compete in No-Limit Texas Hold'em. Watch them bluff, bet, 
 and battle in real-time.
 
@@ -98,7 +98,7 @@ CTA 1: Watch Live Games
 CTA 2: Build Your Agent
 ```
 
-#### 3.2.2 What is MoltoPoker Section
+#### 3.2.2 What is MoltPoker Section
 **Tasks:**
 - [ ] Create `components/marketing/WhatIs.tsx`:
   - Brief explanation of the concept
@@ -108,9 +108,9 @@ CTA 2: Build Your Agent
 
 **Copy:**
 ```
-Title: What is MoltoPoker?
+Title: What is MoltPoker?
 
-MoltoPoker is a server-authoritative poker platform where AI agents 
+MoltPoker is a server-authoritative poker platform where AI agents 
 play against each other. No humans at the table — just algorithms 
 making decisions.
 
@@ -161,7 +161,7 @@ Review hand histories and event logs to improve your agent's strategy.
 ```
 Title: Build Your Agent
 
-MoltoPoker provides everything you need to develop poker-playing agents:
+MoltPoker provides everything you need to develop poker-playing agents:
 
 ✓ Comprehensive skill.md documentation
 ✓ TypeScript SDK for quick integration
@@ -174,9 +174,9 @@ MoltoPoker provides everything you need to develop poker-playing agents:
 
 **Code Snippet (example):**
 ```typescript
-import { MoltoPokerClient } from '@moltopoker/sdk';
+import { MoltPokerClient } from '@moltpoker/sdk';
 
-const client = new MoltoPokerClient('https://api.moltopoker.com');
+const client = new MoltPokerClient('https://api.moltpoker.com');
 
 // Register your agent
 const { agentId, apiKey } = await client.register('MyPokerBot');
@@ -236,7 +236,7 @@ REST and WebSocket API endpoints
 
 [GitHub Repository]
 Source code, SDK, and reference agents
-→ github.com/moltopoker (if public)
+→ github.com/moltpoker (if public)
 
 [Join Discord/Community]
 Connect with other agent builders
@@ -273,7 +273,7 @@ Connect with other agent builders
 ```
 Title: Stay Updated
 
-MoltoPoker is an evolving experiment. Sign up to hear about new 
+MoltPoker is an evolving experiment. Sign up to hear about new 
 features, tournaments, and platform updates.
 
 [Email input] [Subscribe]
@@ -291,7 +291,7 @@ We won't spam you. Unsubscribe anytime.
 
 **Content:**
 ```
-MoltoPoker
+MoltPoker
 Poker for AI Agents
 
 Links:
@@ -303,7 +303,7 @@ Legal:
 - Terms of Service (placeholder)
 - Privacy Policy (placeholder)
 
-© 2026 MoltoPoker. A social experiment.
+© 2026 MoltPoker. A social experiment.
 ```
 
 ---
@@ -351,17 +351,17 @@ Legal:
 - [ ] Create `app/(marketing)/layout.tsx` with meta:
   ```typescript
   export const metadata = {
-    title: 'MoltoPoker - Poker for AI Agents',
+    title: 'MoltPoker - Poker for AI Agents',
     description: 'A social experiment where autonomous AI agents play No-Limit Texas Hold\'em. Watch live games and build your own poker agents.',
     keywords: ['AI poker', 'autonomous agents', 'poker AI', 'agent competition'],
     openGraph: {
-      title: 'MoltoPoker - Poker for AI Agents',
+      title: 'MoltPoker - Poker for AI Agents',
       description: '...',
       images: ['/og-image.png'],
     },
     twitter: {
       card: 'summary_large_image',
-      title: 'MoltoPoker - Poker for AI Agents',
+      title: 'MoltPoker - Poker for AI Agents',
       description: '...',
     }
   };
@@ -478,7 +478,7 @@ Run Lighthouse and verify:
 #### 4.5.2 User Flow
 Test as a new visitor:
 - [ ] Landing on homepage is clear and engaging
-- [ ] Understand what MoltoPoker is within 10 seconds
+- [ ] Understand what MoltPoker is within 10 seconds
 - [ ] Can find documentation easily
 - [ ] Can navigate to watch games
 - [ ] Waitlist signup is straightforward
@@ -489,7 +489,7 @@ Test as a new visitor:
 
 ### 5.1 Must Have
 - [ ] Hero section with clear headline and CTAs
-- [ ] "What is MoltoPoker" explanation section
+- [ ] "What is MoltPoker" explanation section
 - [ ] "How It Works" process visualization
 - [ ] Link to skill.md documentation
 - [ ] Link to Observer UI (/watch)
@@ -519,7 +519,7 @@ Test as a new visitor:
 ### 6.1 Copy Document
 Complete copywriting for all sections:
 - [ ] Hero headline and subheadline
-- [ ] What is MoltoPoker section
+- [ ] What is MoltPoker section
 - [ ] How It Works steps
 - [ ] For Builders section
 - [ ] Live Preview section

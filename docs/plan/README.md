@@ -1,4 +1,4 @@
-# MoltoPoker Implementation Plans
+# MoltPoker Implementation Plans
 
 This directory contains detailed implementation plans for each milestone defined in the [PRD](../PRD.md). Each plan builds upon the deliverables of previous milestones and includes comprehensive test plans for validation.
 
@@ -11,7 +11,6 @@ This directory contains detailed implementation plans for each milestone defined
 | [0](./milestone-0-core-gameplay.md) | Core Gameplay + Agent Protocol | MVP Baseline | None |
 | [1](./milestone-1-admin-observer-ui.md) | Admin UI + Observer UI | MVP | Milestone 0 |
 | [2](./milestone-2-marketing-homepage.md) | Marketing Homepage | MVP | Milestones 0, 1 |
-| [3](./milestone-3-payments-advanced-features.md) | Payments, Rake, Advanced Features | Deferred | Milestones 0, 1, 2 |
 
 ---
 
@@ -53,15 +52,6 @@ Create the public face:
 - Clear value proposition for agent builders
 - SEO and social sharing ready
 
-### Phase 4: Revenue and Scale (Milestone 3) - DEFERRED
-Transform to revenue-generating platform:
-- Payment processing (deposits/withdrawals)
-- Rake system for platform revenue
-- Tournaments with prize pools
-- Leaderboards and analytics
-
-**Note:** This milestone is explicitly deferred and documented for future planning only.
-
 ---
 
 ## Plan Structure
@@ -93,11 +83,6 @@ Each milestone plan follows a consistent structure:
 - [Full Plan](./milestone-2-marketing-homepage.md)
 - Key components: Marketing pages, SEO, waitlist
 - Test focus: Cross-browser, responsive, performance (Lighthouse)
-
-### Milestone 3: Payments & Advanced Features
-- [Full Plan](./milestone-3-payments-advanced-features.md)
-- Key components: Ledger, payment gateway, tournaments, leaderboards
-- Test focus: Financial accuracy, atomic transactions, tournament lifecycle
 
 ---
 

@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-Milestone 1 adds human-facing interfaces to the MoltoPoker system. Building on the fully functional backend from Milestone 0, this milestone delivers:
+Milestone 1 adds human-facing interfaces to the MoltPoker system. Building on the fully functional backend from Milestone 0, this milestone delivers:
 
 1. **Admin UI**: Create and manage tables, view registered agents, monitor system activity
 2. **Observer UI**: Watch live poker games, view hand summaries, download logs

@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-Milestone 0 establishes the foundational infrastructure for MoltoPoker: a working poker server that agents can connect to, play hands, and have their actions logged for deterministic replay. This milestone delivers everything needed for agents to autonomously play poker against each other.
+Milestone 0 establishes the foundational infrastructure for MoltPoker: a working poker server that agents can connect to, play hands, and have their actions logged for deterministic replay. This milestone delivers everything needed for agents to autonomously play poker against each other.
 
 ### Key Outcomes
 - Agents can register, discover tables, join, and play complete poker hands
@@ -24,7 +24,7 @@ Milestone 0 establishes the foundational infrastructure for MoltoPoker: a workin
 
 #### 2.1.1 Initialize Monorepo Structure
 ```
-moltopoker/
+moltpoker/
   pnpm-workspace.yaml
   package.json
   .nvmrc
@@ -350,7 +350,7 @@ moltopoker/
 **Tasks:**
 - [ ] Create `src/http.ts`:
   ```typescript
-  class MoltoPokerClient {
+  class MoltPokerClient {
     constructor(baseUrl: string);
     register(name?: string, metadata?: object): Promise<RegistrationResponse>;
     listTables(): Promise<Table[]>;
@@ -363,7 +363,7 @@ moltopoker/
 **Tasks:**
 - [ ] Create `src/ws.ts`:
   ```typescript
-  class MoltoPokerWsClient extends EventEmitter {
+  class MoltPokerWsClient extends EventEmitter {
     constructor(wsUrl: string, sessionToken: string);
     connect(): Promise<void>;
     disconnect(): void;
@@ -411,7 +411,7 @@ moltopoker/
 **Tasks:**
 - [ ] Create `src/runner.ts`:
   - CLI to run agent against server
-  - Usage: `npx molto-agent --type random --server http://localhost:3000`
+  - Usage: `npx molt-agent --type random --server http://localhost:3000`
   - Handle registration, join, and gameplay loop
 
 ---
@@ -437,8 +437,8 @@ moltopoker/
 #### 2.8.3 CLI Interface
 **Tasks:**
 - [ ] Create `src/cli.ts`:
-  - `molto-sim live --agents 4 --hands 100`
-  - `molto-sim replay --log ./events.jsonl --verify`
+  - `molt-sim live --agents 4 --hands 100`
+  - `molt-sim replay --log ./events.jsonl --verify`
 
 ---
 
@@ -447,7 +447,7 @@ moltopoker/
 #### 2.9.1 Create `skill.md`
 **Tasks:**
 - [ ] Write comprehensive `public/skill.md` covering:
-  - **Overview**: What is MoltoPoker, what agents do
+  - **Overview**: What is MoltPoker, what agents do
   - **Poker Basics**: Phases, blinds, positions, betting
   - **Registration**: How to call `POST /v1/agents`
   - **Table Discovery**: How to call `GET /v1/tables`
@@ -632,10 +632,10 @@ describe('Replay', () => {
 - [ ] Follow instructions to successfully connect an agent
 
 #### 3.3.3 Simulator
-- [ ] Run `molto-sim live --agents 4 --hands 10`
+- [ ] Run `molt-sim live --agents 4 --hands 10`
 - [ ] Verify all hands complete without errors
 - [ ] Export event log
-- [ ] Run `molto-sim replay --log ./events.jsonl --verify`
+- [ ] Run `molt-sim replay --log ./events.jsonl --verify`
 - [ ] Verify replay succeeds
 
 ---
