@@ -1,0 +1,26 @@
+{
+  "name": "@moltpoker/agents",
+  "version": "0.1.0",
+  "description": "Reference poker agents for MoltPoker",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "molt-agent": "./dist/runner.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@moltpoker/sdk": "workspace:*",
+    "@moltpoker/shared": "workspace:*",
+    "commander": "^11.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
