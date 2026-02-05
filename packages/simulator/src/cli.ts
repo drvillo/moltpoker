@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import dotenv from 'dotenv';
+import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
+
 import { program } from 'commander';
+import dotenv from 'dotenv';
 
 import { LiveSimulator } from './live.js';
 import { ReplaySimulator } from './replay.js';

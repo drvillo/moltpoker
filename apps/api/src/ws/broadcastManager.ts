@@ -1,4 +1,3 @@
-import type { WebSocket } from 'ws';
 
 import type { TableRuntime } from '@moltpoker/poker';
 import type {
@@ -8,6 +7,7 @@ import type {
   WelcomePayload,
   WsMessageEnvelope,
 } from '@moltpoker/shared';
+import type { WebSocket } from 'ws';
 
 interface Connection {
   ws: WebSocket;

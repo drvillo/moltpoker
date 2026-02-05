@@ -1,7 +1,80 @@
 import { getDefaultTimeoutAction } from '@moltpoker/poker';
 
-import { tableManager } from './manager.js';
 import { broadcastManager } from '../ws/broadcastManager.js';
+
+import { tableManager } from './manager.js';
+
+/** Delay before auto-starting next hand (ms) */
+const NEXT_HAND_DELAY_MS = 1500;
+
+/** Track which hand numbers have scheduled next-hand */
+const scheduledNextHandForHand = new Map<string, number>();
+
+/**
+ * Auto-start the next hand after a delay
+ * Called after hand_complete is broadcast
+ */
+export function scheduleNextHand(tableId: string): void {
+  const table = tableManager.get(tableId);
+  if (!table) return;
+
+  const currentHand = table.runtime.getHandNumber();
+
+  // Idempotency check - already scheduled for this hand?
+  if (scheduledNextHandForHand.get(tableId) === currentHand) {
+    return;
+  }
+  scheduledNextHandForHand.set(tableId, currentHand);
+
+  setTimeout(async () => {
+    // Clear tracking on execution
+    if (scheduledNextHandForHand.get(tableId) === currentHand) {
+      scheduledNextHandForHand.delete(tableId);
+    }
+
+    const tableAfterDelay = tableManager.get(tableId);
+    if (!tableAfterDelay) return;
+
+    const { runtime, eventLogger } = tableAfterDelay;
+
+    // Only start if hand is complete and we have enough players
+    if (!runtime.isHandComplete()) return;
+
+    // Start the next hand
+    const handStarted = runtime.startHand();
+
+    if (handStarted) {
+      // Log hand start
+      const players = runtime.getAllPlayers();
+      const config = runtime.getConfig();
+
+      await eventLogger.log(
+        'HAND_START',
+        {
+          handNumber: runtime.getHandNumber(),
+          dealerSeat: runtime.getDealerSeat(),
+          smallBlindSeat: players.find((p) => p.bet === config.blinds.small)?.seatId ?? -1,
+          bigBlindSeat: players.find((p) => p.bet === config.blinds.big)?.seatId ?? -1,
+          smallBlind: config.blinds.small,
+          bigBlind: config.blinds.big,
+          players: players.map((p) => ({
+            seatId: p.seatId,
+            agentId: p.agentId,
+            stack: p.stack + p.bet,
+            holeCards: p.holeCards,
+          })),
+        },
+        runtime.getHandNumber()
+      );
+
+      // Broadcast game state to all
+      broadcastManager.broadcastGameState(tableId, runtime);
+
+      // Schedule timeout for first player
+      scheduleActionTimeout(tableId);
+    }
+  }, NEXT_HAND_DELAY_MS);
+}
 
 /**
  * Handle action timeout for a player
@@ -25,46 +98,53 @@ export async function handleActionTimeout(tableId: string, seatId: number): Prom
     // Get player info
     const player = runtime.getPlayer(seatId);
 
-    // Log the timeout event
-    await eventLogger.log(
-      'PLAYER_TIMEOUT',
-      {
-        handNumber: runtime.getHandNumber(),
-        seatId,
-        agentId: player?.agentId || 'unknown',
-        defaultAction: defaultAction.kind,
-      },
-      runtime.getHandNumber()
-    );
-
-    // Log the action event
-    await eventLogger.log(
-      'PLAYER_ACTION',
-      {
-        handNumber: runtime.getHandNumber(),
-        seatId,
-        agentId: player?.agentId || 'unknown',
-        actionId: defaultAction.action_id,
-        kind: defaultAction.kind,
-        amount: defaultAction.amount,
-        isTimeout: true,
-      },
-      runtime.getHandNumber()
-    );
-
-    // Broadcast updated state
+    // Broadcast updated state (sync)
     broadcastManager.broadcastGameState(tableId, runtime);
 
-    // Check if hand is complete
-    if (runtime.isHandComplete()) {
-      const handComplete = runtime.getHandCompletePayload();
-      if (handComplete) {
-        await eventLogger.log('HAND_COMPLETE', handComplete as Record<string, unknown>, runtime.getHandNumber());
-        broadcastManager.broadcastHandComplete(tableId, handComplete);
-      }
+    // Check hand completion and schedule (sync)
+    const handComplete = runtime.isHandComplete() ? runtime.getHandCompletePayload() : null;
+    if (handComplete) {
+      broadcastManager.broadcastHandComplete(tableId, handComplete);
+      scheduleNextHand(tableId);
     } else {
       // Schedule next timeout if there's still someone to act
       scheduleActionTimeout(tableId);
+    }
+
+    // Log asynchronously (fire-and-forget)
+    eventLogger
+      .log(
+        'PLAYER_TIMEOUT',
+        {
+          handNumber: runtime.getHandNumber(),
+          seatId,
+          agentId: player?.agentId || 'unknown',
+          defaultAction: defaultAction.kind,
+        },
+        runtime.getHandNumber()
+      )
+      .catch((err) => console.error('Failed to log timeout:', err));
+
+    eventLogger
+      .log(
+        'PLAYER_ACTION',
+        {
+          handNumber: runtime.getHandNumber(),
+          seatId,
+          agentId: player?.agentId || 'unknown',
+          actionId: defaultAction.action_id,
+          kind: defaultAction.kind,
+          amount: defaultAction.amount,
+          isTimeout: true,
+        },
+        runtime.getHandNumber()
+      )
+      .catch((err) => console.error('Failed to log action:', err));
+
+    if (handComplete) {
+      eventLogger
+        .log('HAND_COMPLETE', handComplete as Record<string, unknown>, runtime.getHandNumber())
+        .catch((err) => console.error('Failed to log hand complete:', err));
     }
   }
 }
@@ -94,4 +174,11 @@ export function scheduleActionTimeout(tableId: string): void {
  */
 export function clearActionTimeout(tableId: string, seatId: number): void {
   tableManager.clearActionTimeout(tableId, seatId);
+}
+
+/**
+ * Clear scheduled next-hand for a table (cleanup when table is destroyed)
+ */
+export function clearScheduledNextHand(tableId: string): void {
+  scheduledNextHandForHand.delete(tableId);
 }

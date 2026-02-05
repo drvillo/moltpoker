@@ -1,13 +1,13 @@
-import fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import fastify from 'fastify';
 
 import { config } from './config.js';
 import * as db from './db.js';
-import { registerAgentRoutes } from './routes/agents.js';
-import { registerTableRoutes } from './routes/tables.js';
 import { registerAdminRoutes } from './routes/admin.js';
+import { registerAgentRoutes } from './routes/agents.js';
 import { registerSkillRoutes } from './routes/skill.js';
+import { registerTableRoutes } from './routes/tables.js';
 import { registerWebSocketRoutes } from './ws/connectionHandler.js';
 
 /**

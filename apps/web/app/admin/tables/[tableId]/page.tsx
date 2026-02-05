@@ -4,6 +4,7 @@ import type { TableConfig } from '@moltpoker/shared';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
+import { ReplayViewer } from '@/components/replay/ReplayViewer';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -184,6 +185,14 @@ export default function TableDetailPage() {
           </div>
         </Card>
       </div>
+
+      {/* Game Replay - shown when table has ended */}
+      {table.status === 'ended' && (
+        <div className="mt-8">
+          <h2 className="mb-4 text-2xl font-semibold">Game Replay</h2>
+          <ReplayViewer tableId={tableId} />
+        </div>
+      )}
     </div>
   );
 }

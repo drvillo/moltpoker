@@ -1,5 +1,3 @@
-import type { FastifyInstance } from 'fastify';
-
 import {
   ErrorCodes,
   JoinRequestSchema,
@@ -10,6 +8,8 @@ import {
   type Seat,
   type TableListItem,
 } from '@moltpoker/shared';
+import type { FastifyInstance } from 'fastify';
+
 
 import { apiKeyAuth } from '../auth/apiKey.js';
 import { generateSessionToken } from '../auth/sessionToken.js';

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { program } from 'commander';
 
 import { MoltPokerClient, MoltPokerWsClient } from '@moltpoker/sdk';
 import type { GameStatePayload } from '@moltpoker/shared';
+import { program } from 'commander';
 
 import { CallStationAgent } from './callStation.js';
 import { RandomAgent } from './random.js';

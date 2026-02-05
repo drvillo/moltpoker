@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useRouter } from 'next/navigation';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import CreateTablePage from '@/app/admin/tables/create/page';
 
 vi.mock('next/navigation', () => ({

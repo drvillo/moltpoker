@@ -1,7 +1,7 @@
+import type { Card } from '@moltpoker/shared';
 import { describe, it, expect } from 'vitest';
 
 import { evaluateHand, compareHands, HandRanks } from '../src/handEvaluator.js';
-import type { Card } from '@moltpoker/shared';
 
 function card(str: string): Card {
   return { rank: str[0]!, suit: str[1] as 's' | 'h' | 'd' | 'c' };

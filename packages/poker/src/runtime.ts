@@ -443,9 +443,10 @@ export class TableRuntime {
 
     // Move to next player
     const nextSeat = this.getNextActingSeat(this.currentSeat);
+    const isBettingComplete = this.isBettingRoundComplete();
 
     // Check if we're back to the last raiser (or past it)
-    if (nextSeat === this.lastRaiseSeat || this.isBettingRoundComplete()) {
+    if (nextSeat === this.lastRaiseSeat || isBettingComplete) {
       this.advanceToNextStreet();
     } else {
       this.currentSeat = nextSeat;

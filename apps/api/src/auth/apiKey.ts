@@ -1,6 +1,6 @@
+import { ErrorCodes } from '@moltpoker/shared';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 
-import { ErrorCodes } from '@moltpoker/shared';
 
 import { getAgentByApiKeyHash } from '../db.js';
 import { hashApiKey } from '../utils/crypto.js';

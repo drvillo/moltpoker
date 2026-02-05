@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process';
+import WebSocket from 'ws';
 
 export interface LiveSimulatorOptions {
   serverUrl: string;
@@ -121,12 +122,7 @@ export class LiveSimulator {
     }
 
     // Wait for hands to complete
-    // In a real implementation, we'd poll for hand completion
-    // For now, just wait a reasonable amount of time
-    const estimatedTimePerHand = (this.options.tableConfig?.actionTimeoutMs ?? 5000) * 4;
-    const totalWaitTime = this.options.handsToPlay * estimatedTimePerHand;
-
-    await new Promise((resolve) => setTimeout(resolve, Math.min(totalWaitTime, 60000)));
+    const handsPlayed = await this.waitForHandCompletion(tableId);
 
     // Stop the table
     if (this.options.verbose) {
@@ -146,11 +142,53 @@ export class LiveSimulator {
     const duration = Date.now() - startTime;
 
     return {
-      handsPlayed: this.options.handsToPlay, // Approximate
+      handsPlayed,
       duration,
       agentResults: [], // Would need to track this properly
       errors,
     };
+  }
+
+  /**
+   * Wait for hands to complete by observing via WebSocket
+   */
+  private async waitForHandCompletion(tableId: string): Promise<number> {
+    const wsUrl = this.options.serverUrl.replace(/^http/, 'ws');
+    const ws = new WebSocket(`${wsUrl}/v1/ws/observe/${tableId}`);
+
+    let handsCompleted = 0;
+    const targetHands = this.options.handsToPlay;
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        ws.close();
+        resolve(handsCompleted); // Return what we got
+      }, 120000); // 2 minute safety timeout
+
+      ws.onopen = () => {};
+
+      ws.onmessage = (event: WebSocket.MessageEvent) => {
+        const message = JSON.parse(event.data.toString());
+        if (message.type === 'hand_complete') {
+          handsCompleted++;
+          if (this.options.verbose) {
+            console.log(`Hand ${handsCompleted}/${targetHands} complete`);
+          }
+          if (handsCompleted >= targetHands) {
+            clearTimeout(timeout);
+            ws.close();
+            resolve(handsCompleted);
+          }
+        }
+      };
+
+      ws.onclose = () => {};
+
+      ws.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error('WebSocket connection error'));
+      };
+    });
   }
 
   /**

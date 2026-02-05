@@ -9,7 +9,7 @@ import {
 
 import * as db from '../db.js';
 import { tableManager } from '../table/manager.js';
-import { scheduleActionTimeout } from '../table/timeoutHandler.js';
+import { scheduleActionTimeout, clearScheduledNextHand } from '../table/timeoutHandler.js';
 import { generateTableId } from '../utils/crypto.js';
 import { broadcastManager } from '../ws/broadcastManager.js';
 import { adminAuthMiddleware } from '../auth/adminAuth.js';
@@ -228,6 +228,9 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
 
           // Disconnect all WebSocket connections
           broadcastManager.disconnectAll(tableId);
+
+          // Clear scheduled next-hand
+          clearScheduledNextHand(tableId);
 
           // Destroy runtime
           tableManager.destroy(tableId);

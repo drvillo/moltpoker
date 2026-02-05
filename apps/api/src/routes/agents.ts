@@ -1,9 +1,9 @@
-import type { FastifyInstance } from 'fastify';
-
 import {
   AgentRegistrationSchema,
   PROTOCOL_VERSION,
 } from '@moltpoker/shared';
+import type { FastifyInstance } from 'fastify';
+
 
 import { config } from '../config.js';
 import * as db from '../db.js';

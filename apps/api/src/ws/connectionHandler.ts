@@ -1,20 +1,21 @@
-import type { FastifyInstance } from 'fastify';
-import type { WebSocket } from 'ws';
-
 import {
   ErrorCodes,
   MIN_SUPPORTED_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
 } from '@moltpoker/shared';
+import type { FastifyInstance , FastifyRequest } from 'fastify';
+import type { WebSocket } from 'ws';
 
+
+import { verifyAdminAuth } from '../auth/adminAuth.js';
+import { validateSession } from '../auth/sessionToken.js';
 import { config } from '../config.js';
 import { updateAgentLastSeen } from '../db.js';
-import { validateSession } from '../auth/sessionToken.js';
-import { verifyAdminAuth } from '../auth/adminAuth.js';
 import { tableManager } from '../table/manager.js';
+
 import { broadcastManager } from './broadcastManager.js';
 import { handleMessage } from './messageHandler.js';
-import type { FastifyRequest } from 'fastify';
+
 
 /**
  * Register WebSocket routes

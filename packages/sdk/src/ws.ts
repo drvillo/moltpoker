@@ -1,7 +1,5 @@
 import { EventEmitter } from 'events';
 
-import WebSocket from 'ws';
-
 import type {
   AckPayload,
   ErrorPayload,
@@ -11,6 +9,8 @@ import type {
   WelcomePayload,
   WsMessageEnvelope,
 } from '@moltpoker/shared';
+import WebSocket from 'ws';
+
 
 export interface MoltPokerWsClientOptions {
   wsUrl: string;

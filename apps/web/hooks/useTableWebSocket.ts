@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
 import type { GameStatePayload, HandCompletePayload } from '@moltpoker/shared';
+import { useEffect, useState, useRef } from 'react';
 
 interface UseTableWebSocketOptions {
   mode?: 'admin' | 'observer';
@@ -41,7 +41,7 @@ export function useTableWebSocket(
     
     // Convert to WebSocket protocol
     const wsProtocol = apiUrl.startsWith('https') ? 'wss:' : 'ws:';
-    let baseUrl = apiUrl.replace(/\/$/, ''); // Remove trailing slash
+    const baseUrl = apiUrl.replace(/\/$/, ''); // Remove trailing slash
     const wsUrl = baseUrl.replace(/^https?:/, wsProtocol);
 
     let url: string;

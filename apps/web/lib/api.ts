@@ -202,7 +202,7 @@ export const adminApi = {
    */
   async exportTableEvents(tableId: string): Promise<Blob> {
     const url = `${API_URL}/v1/admin/tables/${tableId}/export`;
-    const headers = await getAuthHeaders();
+    const headers = await getAuthHeaders(false);
     const response = await fetch(url, { headers });
     if (!response.ok) {
       const error: ApiError = await response.json().catch(() => ({

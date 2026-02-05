@@ -1,7 +1,8 @@
-import type { FastifyInstance } from 'fastify';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+
+import type { FastifyInstance } from 'fastify';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

@@ -1,6 +1,6 @@
+import { ErrorCodes, SESSION_EXPIRATION_SECONDS } from '@moltpoker/shared';
 import jwt from 'jsonwebtoken';
 
-import { ErrorCodes, SESSION_EXPIRATION_SECONDS } from '@moltpoker/shared';
 
 import { config } from '../config.js';
 import { getSession } from '../db.js';

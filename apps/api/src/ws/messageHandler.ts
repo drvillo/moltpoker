@@ -1,15 +1,17 @@
-import type { WebSocket } from 'ws';
-
 import {
   ClientMessageSchema,
   ErrorCodes,
   MIN_SUPPORTED_PROTOCOL_VERSION,
 } from '@moltpoker/shared';
+import type { WebSocket } from 'ws';
+
 
 import { config } from '../config.js';
 import { updateAgentLastSeen } from '../db.js';
 import { tableManager } from '../table/manager.js';
-import { clearActionTimeout, scheduleActionTimeout } from '../table/timeoutHandler.js';
+import { tableActionLock } from '../table/actionLock.js';
+import { clearActionTimeout, scheduleActionTimeout, scheduleNextHand } from '../table/timeoutHandler.js';
+
 import { broadcastManager } from './broadcastManager.js';
 
 interface SessionInfo {
@@ -62,7 +64,12 @@ export async function handleMessage(
       break;
 
     case 'action':
-      await handleAction(session, message.action, message.expected_seq);
+      const unlock = await tableActionLock.acquire(tableId);
+      try {
+        await handleAction(session, message.action, message.expected_seq);
+      } finally {
+        unlock();
+      }
       break;
   }
 }
@@ -135,36 +142,42 @@ async function handleAction(
   // Clear timeout for this seat
   clearActionTimeout(tableId, seatId);
 
-  // Log the action event
-  await eventLogger.log(
-    'PLAYER_ACTION',
-    {
-      handNumber: runtime.getHandNumber(),
-      seatId,
-      agentId,
-      actionId: action.action_id,
-      kind: action.kind,
-      amount: action.amount,
-      isTimeout: false,
-    },
-    runtime.getHandNumber()
-  );
-
-  // Send ack to the acting player
+  // Send ack to the acting player (sync)
   broadcastManager.sendAck(tableId, agentId, action.action_id, runtime.getSeq(), true);
 
-  // Broadcast updated state to all players
+  // Broadcast updated state to all players (sync)
   broadcastManager.broadcastGameState(tableId, runtime);
 
-  // Check if hand is complete
-  if (runtime.isHandComplete()) {
-    const handComplete = runtime.getHandCompletePayload();
-    if (handComplete) {
-      await eventLogger.log('HAND_COMPLETE', handComplete as Record<string, unknown>, runtime.getHandNumber());
-      broadcastManager.broadcastHandComplete(tableId, handComplete);
-    }
+  // Check hand completion and schedule (sync)
+  const handComplete = runtime.isHandComplete() ? runtime.getHandCompletePayload() : null;
+  if (handComplete) {
+    broadcastManager.broadcastHandComplete(tableId, handComplete);
+    scheduleNextHand(tableId);
   } else {
     // Schedule timeout for next player
     scheduleActionTimeout(tableId);
+  }
+
+  // Log asynchronously (fire-and-forget)
+  eventLogger
+    .log(
+      'PLAYER_ACTION',
+      {
+        handNumber: runtime.getHandNumber(),
+        seatId,
+        agentId,
+        actionId: action.action_id,
+        kind: action.kind,
+        amount: action.amount,
+        isTimeout: false,
+      },
+      runtime.getHandNumber()
+    )
+    .catch((err) => console.error('Failed to log action:', err));
+
+  if (handComplete) {
+    eventLogger
+      .log('HAND_COMPLETE', handComplete as Record<string, unknown>, runtime.getHandNumber())
+      .catch((err) => console.error('Failed to log hand complete:', err));
   }
 }
