@@ -9,6 +9,8 @@
     "dev": "pnpm --filter @moltpoker/api dev",
     "dev:api": "pnpm --filter @moltpoker/api dev",
     "dev:web": "pnpm --filter @moltpoker/web dev",
+    "dev:agent": "NODE_OPTIONS='--conditions=development' pnpm --filter @moltpoker/agents dev:agent",
+    "dev:sim": "NODE_OPTIONS='--conditions=development' pnpm --filter @moltpoker/simulator dev:sim",
     "agent": "molt-agent",
     "sim": "molt-sim",
     "test": "vitest",

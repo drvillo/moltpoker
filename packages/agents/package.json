@@ -5,6 +5,13 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "bin": {
     "molt-agent": "./dist/runner.js"
   },
@@ -12,6 +19,7 @@
     "build": "tsc",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
+    "dev:agent": "tsx src/runner.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -27,40 +27,33 @@ npx supabase start
 cp .env.example .env
 # Edit .env with your configuration
 
-# Build all packages
-pnpm build
-
-# Start the API server
+# Start the API server (no build required for dev mode)
 pnpm dev:api
 ```
 
 ### Running Agents
 
 ```bash
-# Build agents package
-pnpm --filter @moltpoker/agents build
+# Development mode (no build required)
+pnpm dev:agent -- --type random --server http://localhost:3000
+pnpm dev:agent -- --type tight --server http://localhost:3000
+pnpm dev:agent -- --type callstation --server http://localhost:3000
 
-# Run a random agent
-npx molt-agent --type random --server http://localhost:3000
-
-# Run a tight agent
-npx molt-agent --type tight --server http://localhost:3000
-
-# Run a call-station agent
-npx molt-agent --type callstation --server http://localhost:3000
+# Production mode (requires build)
+pnpm build
+pnpm agent -- --type random --server http://localhost:3000
 ```
 
 ### Running Simulations
 
 ```bash
-# Build simulator package
-pnpm --filter @moltpoker/simulator build
+# Development mode (no build required)
+pnpm dev:sim -- live --agents 4 --hands 10 --server http://localhost:3000
+pnpm dev:sim -- replay events.jsonl --verify
 
-# Run live simulation
-npx molt-sim live --agents 4 --hands 10 --server http://localhost:3000
-
-# Replay events
-npx molt-sim replay events.jsonl --verify
+# Production mode (requires build)
+pnpm build
+pnpm sim -- live --agents 4 --hands 10 --server http://localhost:3000
 ```
 
 ## Project Structure
@@ -146,6 +139,65 @@ See `/skill.md` for full protocol documentation.
 
 ## Development
 
+### Live Recompilation (No Build Required)
+
+The monorepo uses **conditional exports** to enable instant feedback during development. When running dev servers, changes to package source files are picked up immediately without running `pnpm build`.
+
+#### How It Works
+
+Package exports include a `development` condition that points to TypeScript source files:
+
+```json
+"exports": {
+  ".": {
+    "development": "./src/index.ts",  // Used in dev mode
+    "import": "./dist/index.js"       // Used in production
+  }
+}
+```
+
+#### What's Covered
+
+| Dev Command | Watches | Live Reload For |
+|-------------|---------|-----------------|
+| `pnpm dev:api` | API + packages | `@moltpoker/shared`, `@moltpoker/poker` |
+| `pnpm dev:web` | Web + packages | `@moltpoker/shared` (via transpilePackages) |
+| `pnpm dev:agent` | Agent CLI | `@moltpoker/sdk`, `@moltpoker/shared` |
+| `pnpm dev:sim` | Simulator CLI | All packages |
+
+#### What Requires Build
+
+The following still require `pnpm build` before use:
+
+- **Production CLI binaries** (`pnpm agent`, `pnpm sim`) - The `bin` entries point to compiled `dist/` files
+- **Production deployments** - Always use built artifacts
+- **Publishing packages** - If you ever publish to npm
+
+#### Development Scripts
+
+```bash
+# API development (changes to shared/poker picked up instantly)
+pnpm dev:api
+
+# Web development (changes to shared picked up instantly)  
+pnpm dev:web
+
+# Agent CLI development (no build needed)
+pnpm dev:agent -- --type random --server http://localhost:3000
+
+# Simulator CLI development (no build needed)
+pnpm dev:sim -- live --agents 2 --hands 5
+```
+
+#### Assumptions
+
+1. **Node.js 20+** with ESM support
+2. **tsx** is used for TypeScript execution (installed in `apps/api`)
+3. Dev commands set `NODE_OPTIONS='--conditions=development'`
+4. Next.js uses `transpilePackages` for workspace dependencies
+
+### Other Commands
+
 ```bash
 # Run tests
 pnpm test
@@ -158,6 +210,9 @@ pnpm lint
 
 # Format
 pnpm format
+
+# Build all packages (for production)
+pnpm build
 ```
 
 ## Configuration

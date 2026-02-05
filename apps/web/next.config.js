@@ -71,6 +71,9 @@ if (!hasSupabaseUrl || !hasSupabaseAnonKey) {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Transpile workspace packages to enable instant dev feedback without pre-building
+  // This allows Next.js to compile TypeScript source files directly from workspace packages
+  transpilePackages: ['@moltpoker/shared'],
   // Environment variables are loaded from root .env.local and apps/web/.env.local via dotenv above
   // NEXT_PUBLIC_* vars are automatically available after loading
 };
