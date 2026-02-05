@@ -10,9 +10,11 @@ import {
 import { config } from '../config.js';
 import { updateAgentLastSeen } from '../db.js';
 import { validateSession } from '../auth/sessionToken.js';
+import { verifyAdminAuth } from '../auth/adminAuth.js';
 import { tableManager } from '../table/manager.js';
 import { broadcastManager } from './broadcastManager.js';
 import { handleMessage } from './messageHandler.js';
+import type { FastifyRequest } from 'fastify';
 
 /**
  * Register WebSocket routes
@@ -91,6 +93,101 @@ export function registerWebSocketRoutes(fastify: FastifyInstance): void {
       console.error('WebSocket error:', err);
     });
   });
+
+  /**
+   * Observer WebSocket endpoint - allows watching games without being a player
+   * GET /v1/ws/observe/:tableId
+   */
+  fastify.get<{ Params: { tableId: string }; Querystring: { showCards?: string } }>(
+    '/v1/ws/observe/:tableId',
+    { websocket: true },
+    async (connection, request) => {
+      const ws = connection;
+      const { tableId } = request.params;
+      const showCards = request.query.showCards === 'true';
+
+      // Check if table exists
+      const table = tableManager.get(tableId);
+      if (!table) {
+        sendErrorAndClose(ws, ErrorCodes.TABLE_NOT_FOUND, 'Table not found or not started');
+        return;
+      }
+
+      // If showCards is requested, verify admin auth
+      let isAdmin = false;
+      if (showCards) {
+        // Create a mock reply object for admin auth check
+        const mockReply = {
+          status: (code: number) => ({
+            send: (data: unknown) => {
+              if (code >= 400) {
+                const error = data as { error?: { code: string; message: string } };
+                sendErrorAndClose(
+                  ws,
+                  error.error?.code || ErrorCodes.UNAUTHORIZED,
+                  error.error?.message || 'Unauthorized'
+                );
+              }
+              return mockReply;
+            },
+          }),
+        } as unknown as Parameters<typeof verifyAdminAuth>[1];
+
+        const admin = await verifyAdminAuth(request as FastifyRequest, mockReply);
+        if (!admin) {
+          return; // Error already sent
+        }
+        isAdmin = true;
+      }
+
+      // Register observer
+      broadcastManager.registerObserver(tableId, ws);
+
+      // Send initial game state
+      // If admin and showCards=true, send state with hole cards for all players
+      // Otherwise send public state (no hole cards)
+      let gameState = table.runtime.getPublicState();
+
+      if (isAdmin && showCards) {
+        // Modify public state to include all hole cards for admin debug mode
+        const players = table.runtime.getAllPlayers();
+        gameState = {
+          ...gameState,
+          players: gameState.players.map((p) => {
+            const player = players.find((pl) => pl.seatId === p.seatId);
+            return {
+              ...p,
+              holeCards: player?.holeCards ?? null,
+            };
+          }),
+        };
+      }
+
+      const envelope = {
+        type: 'game_state',
+        table_id: tableId,
+        seq: gameState.seq,
+        ts: Date.now(),
+        payload: gameState,
+      };
+      ws.send(JSON.stringify(envelope));
+
+      // Handle disconnect
+      ws.on('close', () => {
+        broadcastManager.unregisterObserver(tableId, ws);
+      });
+
+      // Handle errors
+      ws.on('error', (err) => {
+        console.error('Observer WebSocket error:', err);
+      });
+
+      // Observers don't send messages, only receive
+      ws.on('message', () => {
+        // Ignore messages from observers
+      });
+    }
+  );
 }
 
 /**

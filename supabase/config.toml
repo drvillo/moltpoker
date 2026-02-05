@@ -1,6 +1,4 @@
-[project]
-id = "moltpoker"
-name = "MoltPoker"
+ project_id = "moltpoker"
 
 [api]
 enabled = true

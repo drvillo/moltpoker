@@ -22,14 +22,28 @@ import { broadcastManager } from '../ws/broadcastManager.js';
 export function registerTableRoutes(fastify: FastifyInstance): void {
   /**
    * GET /v1/tables - List available tables
+   * Query params:
+   *   - status: Filter by status ('waiting', 'running', 'ended')
+   * 
+   * Note: For 'running' status, only returns tables with active runtimes.
+   * Tables that show 'running' in DB but have no active runtime (e.g., after server restart)
+   * are automatically excluded to prevent observer connection errors.
    */
-  fastify.get('/v1/tables', async (_request, reply) => {
+  fastify.get<{ Querystring: { status?: string } }>('/v1/tables', async (request, reply) => {
     try {
-      const tables = await db.listTables();
+      const { status } = request.query;
+      const tables = await db.listTables(status);
 
       const result: TableListItem[] = [];
 
       for (const table of tables) {
+        // For 'running' tables, verify there's an active runtime
+        // This prevents showing stale data after server restarts
+        if (table.status === 'running' && !tableManager.has(table.id)) {
+          // Table is marked running in DB but has no active runtime - skip it
+          continue;
+        }
+
         const seats = await db.getSeats(table.id);
         const tableConfig = TableConfigSchema.parse(table.config);
 

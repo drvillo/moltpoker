@@ -1,9 +1,34 @@
 #!/usr/bin/env node
 
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
 import { program } from 'commander';
 
 import { LiveSimulator } from './live.js';
 import { ReplaySimulator } from './replay.js';
+
+function findRepoRoot(startDir: string): string {
+  let dir = path.resolve(startDir);
+  const root = path.parse(dir).root;
+  while (dir !== root) {
+    if (existsSync(path.join(dir, 'pnpm-workspace.yaml'))) {
+      return dir;
+    }
+    dir = path.dirname(dir);
+  }
+  return process.cwd();
+}
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = findRepoRoot(__dirname);
+dotenv.config({ path: path.join(repoRoot, '.env') });
+dotenv.config({ path: path.join(repoRoot, '.env.local'), override: true });
+
+const defaultPort = process.env.API_PORT || '3000';
+const defaultServerUrl = `http://localhost:${defaultPort}`;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 program
   .name('molt-sim')
@@ -17,7 +42,7 @@ program
   .option('-a, --agents <count>', 'Number of agents', '4')
   .option('-t, --types <types>', 'Agent types (comma-separated)', 'random,tight,callstation')
   .option('-n, --hands <count>', 'Number of hands to play', '10')
-  .option('-s, --server <url>', 'Server URL', 'http://localhost:3000')
+  .option('-s, --server <url>', 'Server URL', defaultServerUrl)
   .option('--blinds <blinds>', 'Blinds (small/big)', '1/2')
   .option('--stack <stack>', 'Initial stack', '1000')
   .option('--timeout <ms>', 'Action timeout in ms', '5000')
@@ -38,6 +63,7 @@ program
           actionTimeoutMs: parseInt(options.timeout, 10),
         },
         verbose: options.verbose,
+        serviceRoleKey,
       });
 
       console.log('Starting live simulation...');

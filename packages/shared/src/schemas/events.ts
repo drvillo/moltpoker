@@ -18,6 +18,7 @@ export const EventTypeSchema = z.enum([
   'PLAYER_LEFT',
   'TABLE_STARTED',
   'TABLE_ENDED',
+  'AGENT_KICKED',
 ]);
 
 /**
@@ -153,6 +154,15 @@ export const TableEndedEventPayloadSchema = z.object({
       stack: z.number().int(),
     })
   ),
+});
+
+/**
+ * Schema for agent kicked event payload
+ */
+export const AgentKickedEventPayloadSchema = z.object({
+  seatId: z.number().int(),
+  agentId: z.string(),
+  agentName: z.string().nullable(),
 });
 
 /**

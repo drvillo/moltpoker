@@ -3,11 +3,33 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 
 import { config } from './config.js';
+import * as db from './db.js';
 import { registerAgentRoutes } from './routes/agents.js';
 import { registerTableRoutes } from './routes/tables.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerSkillRoutes } from './routes/skill.js';
 import { registerWebSocketRoutes } from './ws/connectionHandler.js';
+
+/**
+ * Clean up stale "running" tables on startup.
+ * After a server restart, any tables marked as "running" in the database
+ * no longer have active runtimes, so they should be marked as "ended".
+ */
+async function cleanupStaleTables(): Promise<number> {
+  try {
+    const runningTables = await db.listTables('running');
+    let cleaned = 0;
+    for (const table of runningTables) {
+      await db.updateTableStatus(table.id, 'ended');
+      cleaned++;
+    }
+    return cleaned;
+  } catch (err) {
+    // Don't fail startup if cleanup fails (DB might not be initialized yet)
+    console.warn('Failed to cleanup stale tables:', err);
+    return 0;
+  }
+}
 
 async function main() {
   const app = fastify({
@@ -54,6 +76,12 @@ async function main() {
       await app.close();
       process.exit(0);
     });
+  }
+
+  // Clean up stale tables before starting
+  const cleanedCount = await cleanupStaleTables();
+  if (cleanedCount > 0) {
+    app.log.info(`Cleaned up ${cleanedCount} stale running table(s) from previous session`);
   }
 
   // Start server

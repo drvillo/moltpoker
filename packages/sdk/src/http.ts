@@ -54,9 +54,12 @@ export class MoltPokerClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+    const headers: Record<string, string> = {};
+
+    // Only set Content-Type if there's a body to send
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     if (requireAuth) {
       if (!this.apiKey) {
@@ -72,7 +75,7 @@ export class MoltPokerClient {
       const response = await fetch(url, {
         method,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
 

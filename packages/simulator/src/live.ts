@@ -11,6 +11,8 @@ export interface LiveSimulatorOptions {
     actionTimeoutMs?: number;
   };
   verbose?: boolean;
+  /** Service role key for admin API authentication */
+  serviceRoleKey?: string;
 }
 
 export interface LiveSimulatorResult {
@@ -37,6 +39,21 @@ export class LiveSimulator {
   }
 
   /**
+   * Get headers for admin API requests
+   */
+  private getAdminHeaders(hasBody: boolean): Record<string, string> {
+    const headers: Record<string, string> = {};
+    // Only set Content-Type if there's a body to send
+    if (hasBody) {
+      headers['Content-Type'] = 'application/json';
+    }
+    if (this.options.serviceRoleKey) {
+      headers['Authorization'] = `Bearer ${this.options.serviceRoleKey}`;
+    }
+    return headers;
+  }
+
+  /**
    * Run the simulation
    */
   async run(): Promise<LiveSimulatorResult> {
@@ -46,7 +63,7 @@ export class LiveSimulator {
     // Create a table via admin API
     const tableResponse = await fetch(`${this.options.serverUrl}/v1/admin/tables`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getAdminHeaders(true),
       body: JSON.stringify({
         config: {
           blinds: this.options.tableConfig?.blinds ?? { small: 1, big: 2 },
@@ -91,6 +108,7 @@ export class LiveSimulator {
 
     const startResponse = await fetch(`${this.options.serverUrl}/v1/admin/tables/${tableId}/start`, {
       method: 'POST',
+      headers: this.getAdminHeaders(false),
     });
 
     if (!startResponse.ok) {
@@ -117,6 +135,7 @@ export class LiveSimulator {
 
     await fetch(`${this.options.serverUrl}/v1/admin/tables/${tableId}/stop`, {
       method: 'POST',
+      headers: this.getAdminHeaders(false),
     });
 
     // Kill agent processes

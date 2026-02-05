@@ -5,6 +5,11 @@ import { config } from './config.js';
 let supabase: SupabaseClient | null = null;
 
 export function getDb(): SupabaseClient {
+  if (!config.supabaseServiceRoleKey) {
+    throw new Error(
+      'SUPABASE_SERVICE_ROLE_KEY is required. Add it to .env or .env.local. Get it from Supabase: Project Settings > API > service_role key.'
+    );
+  }
   if (!supabase) {
     supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
       auth: {
