@@ -14,6 +14,10 @@ export interface LiveSimulatorOptions {
   verbose?: boolean;
   /** Service role key for admin API authentication */
   serviceRoleKey?: string;
+  /** LLM model spec for agents of type "llm" (e.g. "openai:gpt-4.1") */
+  llmModel?: string;
+  /** Path to skill.md file for LLM agents */
+  skillDocPath?: string;
 }
 
 export interface LiveSimulatorResult {
@@ -202,6 +206,16 @@ export class LiveSimulator {
       '--table-id', tableId,
       '--name', `${agentType}-${index}`,
     ];
+
+    // LLM agents need --model and --skill-doc
+    if (agentType === 'llm') {
+      if (!this.options.llmModel)
+        throw new Error('llmModel is required in LiveSimulatorOptions when using LLM agents');
+      if (!this.options.skillDocPath)
+        throw new Error('skillDocPath is required in LiveSimulatorOptions when using LLM agents');
+      args.push('--model', this.options.llmModel);
+      args.push('--skill-doc', this.options.skillDocPath);
+    }
 
     const proc = spawn('node', args, {
       stdio: this.options.verbose ? 'inherit' : 'ignore',

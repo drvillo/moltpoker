@@ -127,6 +127,36 @@ export const PongPayloadSchema = z.object({
 });
 
 /**
+ * Schema for table status payload (sent when waiting or when table ends)
+ */
+const TableStatusPlayerPayloadSchema = z.object({
+  status: z.enum(['waiting', 'running']),
+  seat_id: z.number().int().min(0).max(9),
+  agent_id: z.string(),
+  min_players_to_start: z.number().int().min(2),
+  current_players: z.number().int().min(0),
+});
+
+const TableStatusEndedPayloadSchema = z.object({
+  status: z.literal('ended'),
+  reason: z.string().optional(),
+  final_stacks: z
+    .array(
+      z.object({
+        seat_id: z.number().int(),
+        agent_id: z.string(),
+        stack: z.number().int(),
+      })
+    )
+    .optional(),
+});
+
+export const TableStatusPayloadSchema = z.discriminatedUnion('status', [
+  TableStatusPlayerPayloadSchema,
+  TableStatusEndedPayloadSchema,
+]);
+
+/**
  * Schema for WebSocket message types
  */
 export const WsMessageTypeSchema = z.enum([
@@ -140,6 +170,7 @@ export const WsMessageTypeSchema = z.enum([
   'pong',
   'player_joined',
   'player_left',
+  'table_status',
 ]);
 
 /**

@@ -26,6 +26,7 @@ export const TableConfigSchema = z.object({
   maxSeats: z.number().int().min(MIN_PLAYERS_TO_START).max(MAX_PLAYERS).default(DEFAULT_MAX_SEATS),
   initialStack: z.number().int().positive().default(DEFAULT_INITIAL_STACK),
   actionTimeoutMs: z.number().int().positive().default(DEFAULT_ACTION_TIMEOUT_MS),
+  minPlayersToStart: z.number().int().min(MIN_PLAYERS_TO_START).max(MAX_PLAYERS).default(MIN_PLAYERS_TO_START),
   seed: z.string().optional(),
 });
 

@@ -1,0 +1,232 @@
+import { generateObject } from 'ai'
+import type { LanguageModel } from 'ai'
+import { z } from 'zod'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
+import { dirname } from 'path'
+import type { GameStatePayload, LegalAction, PlayerAction } from '@moltpoker/shared'
+
+import { createActionId, type PokerAgent } from './types.js'
+import {
+  formatCards,
+  formatHandHeader,
+  formatMyCardsLine,
+  formatPlayerLine,
+  formatStackLine,
+  logAgentHandComplete,
+  logAgentError,
+} from './utils/output.js'
+
+// ─── Config ──────────────────────────────────────────────────────────────────
+
+export interface LlmAgentConfig {
+  /** AI SDK language model instance (e.g. openai('gpt-4.1'), anthropic('claude-sonnet-4-5')) */
+  model: LanguageModel
+  /** Path to skill.md on disk -- used verbatim as the system prompt */
+  skillDocPath?: string
+  /** Optional display name */
+  name?: string
+  /** Temperature for LLM sampling (default 0.3) */
+  temperature?: number
+  /** Optional JSONL log file path for prompt/response logging */
+  logPath?: string
+}
+
+// ─── Response Schema ─────────────────────────────────────────────────────────
+
+/** Schema for the structured decision the LLM must return */
+const PokerDecisionSchema = z.object({
+  reasoning: z.string().describe('Brief reasoning for your decision'),
+  kind: z.enum(['fold', 'check', 'call', 'raiseTo']).describe('The action to take'),
+  amount: z
+    .number()
+    .int()
+    .nullable()
+    .describe('Total amount to raise to. Use null unless kind is raiseTo.'),
+})
+
+type PokerDecision = z.infer<typeof PokerDecisionSchema>
+
+// ─── Prompt Formatting ───────────────────────────────────────────────────────
+
+/** Render game state into a concise text prompt for the LLM */
+export function formatGameState(state: GameStatePayload, legalActions: LegalAction[]): string {
+  const totalPot = state.pots.reduce((sum, p) => sum + p.amount, 0)
+
+  // Find our seat (the one with visible hole cards)
+  const mySeat = state.players.find((p) => p.holeCards && p.holeCards.length > 0)
+  const mySeatId = mySeat?.seatId ?? state.currentSeat ?? 0
+
+  const lines: string[] = [
+    formatHandHeader({ handNumber: state.handNumber, phase: state.phase, totalPot }),
+    `Community: ${formatCards(state.communityCards)}`,
+    formatMyCardsLine({ cards: mySeat?.holeCards ?? [], seatId: mySeatId }),
+    formatStackLine({ stack: mySeat?.stack ?? 0, toCall: state.toCall ?? 0 }),
+    '',
+    'Players:',
+  ]
+
+  for (const p of state.players) {
+    lines.push(formatPlayerLine({
+      seatId: p.seatId,
+      stack: p.stack,
+      bet: p.bet,
+      folded: p.folded,
+      allIn: p.allIn,
+      isMe: p.seatId === mySeatId,
+    }))
+  }
+
+  lines.push('')
+  lines.push('Legal actions:')
+  for (const a of legalActions) {
+    if (a.minAmount !== undefined && a.maxAmount !== undefined)
+      lines.push(`  - ${a.kind} (min: ${a.minAmount}, max: ${a.maxAmount})`)
+    else lines.push(`  - ${a.kind}`)
+  }
+
+  return lines.join('\n')
+}
+
+// ─── Action Validation ───────────────────────────────────────────────────────
+
+/**
+ * Validate the LLM's decision against legal actions and produce a valid PlayerAction.
+ * Falls back to check/fold if the LLM picks an illegal action (Safety Defaults from skill.md).
+ */
+export function validateAndBuildAction(
+  decision: PokerDecision,
+  legalActions: LegalAction[],
+): PlayerAction {
+  const chosen = legalActions.find((a) => a.kind === decision.kind)
+
+  if (chosen) {
+    if (chosen.kind === 'raiseTo') {
+      // Clamp amount to legal range
+      const min = chosen.minAmount ?? 0
+      const max = chosen.maxAmount ?? min
+      const amount = Math.max(min, Math.min(max, decision.amount ?? min))
+      return { action_id: createActionId(), kind: 'raiseTo', amount }
+    }
+    return { action_id: createActionId(), kind: chosen.kind }
+  }
+
+  // LLM chose an illegal action -- apply Safety Defaults: check if possible, else fold
+  const canCheck = legalActions.some((a) => a.kind === 'check')
+  if (canCheck) return { action_id: createActionId(), kind: 'check' }
+  return { action_id: createActionId(), kind: 'fold' }
+}
+
+// ─── Agent ───────────────────────────────────────────────────────────────────
+
+/**
+ * LLM-powered poker agent.
+ *
+ * Uses the content of skill.md as its system prompt verbatim -- no extra preamble
+ * or built-in strategy. This mirrors what a real autonomous LLM agent connecting
+ * to the platform would experience: read skill.md, understand the protocol, play poker.
+ */
+export class LlmAgent implements PokerAgent {
+  name: string
+  private model: LanguageModel
+  private systemPrompt: string
+  private temperature: number
+  private logPath: string | null
+
+  constructor(config: LlmAgentConfig) {
+    this.name = config.name ?? 'LlmAgent'
+    this.model = config.model
+    this.temperature = config.temperature ?? 0.3
+    this.logPath = config.logPath ?? null
+    if (!config.skillDocPath)
+      throw new Error('LlmAgent requires a skillDocPath')
+    if (!existsSync(config.skillDocPath))
+      throw new Error(`Skill doc not found: ${config.skillDocPath}`)
+    // skill.md IS the system prompt -- used verbatim
+    this.systemPrompt = readFileSync(config.skillDocPath, 'utf-8')
+
+    if (this.logPath) mkdirSync(dirname(this.logPath), { recursive: true })
+  }
+
+  /** Enable JSONL logging to the given file path (creates parent dirs) */
+  enableLogging(logPath: string): void {
+    mkdirSync(dirname(logPath), { recursive: true })
+    this.logPath = logPath
+  }
+
+  private appendLog(entry: Record<string, unknown>): void {
+    if (!this.logPath) return
+    try {
+      appendFileSync(this.logPath, JSON.stringify(entry) + '\n')
+    } catch {
+      // Never let log failures affect gameplay
+    }
+  }
+
+  async getAction(
+    state: GameStatePayload,
+    legalActions: LegalAction[],
+  ): Promise<PlayerAction> {
+    const prompt = formatGameState(state, legalActions)
+    const logCtx = {
+      handNumber: state.handNumber,
+      phase: state.phase,
+      seatId: state.currentSeat,
+      seq: state.seq,
+    }
+
+    this.appendLog({
+      event: 'llm_prompt',
+      timestamp: new Date().toISOString(),
+      ...logCtx,
+      prompt,
+    })
+
+    try {
+      const { object } = await generateObject({
+        model: this.model,
+        schema: PokerDecisionSchema,
+        system: this.systemPrompt,
+        prompt,
+        temperature: this.temperature,
+      })
+
+      const action = validateAndBuildAction(object, legalActions)
+
+      this.appendLog({
+        event: 'llm_response',
+        timestamp: new Date().toISOString(),
+        ...logCtx,
+        response: object,
+        action,
+      })
+
+      return action
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[${this.name}] LLM call failed:`, err)
+      // Safety default: check if possible, else fold
+      const canCheck = legalActions.some((a) => a.kind === 'check')
+      const fallbackAction = canCheck
+        ? { action_id: createActionId(), kind: 'check' as const }
+        : { action_id: createActionId(), kind: 'fold' as const }
+
+      this.appendLog({
+        event: 'llm_error',
+        timestamp: new Date().toISOString(),
+        ...logCtx,
+        error: message,
+        fallbackAction,
+      })
+
+      return fallbackAction
+    }
+  }
+
+  onHandComplete(handNumber: number, winnings: number): void {
+    logAgentHandComplete(this.name, handNumber, winnings)
+  }
+
+  onError(error: { code: string; message: string }): void {
+    logAgentError(this.name, error)
+  }
+}

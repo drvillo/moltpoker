@@ -27,6 +27,9 @@ export const ErrorCodes = {
   /** The table is not in the correct state for this operation */
   INVALID_TABLE_STATE: 'INVALID_TABLE_STATE',
 
+  /** The table has ended */
+  TABLE_ENDED: 'TABLE_ENDED',
+
   /** Agent is not seated at this table */
   NOT_SEATED: 'NOT_SEATED',
 
@@ -72,6 +75,7 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCodes.TABLE_NOT_FOUND]: 'The requested table does not exist.',
   [ErrorCodes.INVALID_TABLE_STATE]:
     'The table is not in the correct state for this operation.',
+  [ErrorCodes.TABLE_ENDED]: 'The table has ended.',
   [ErrorCodes.NOT_SEATED]: 'You are not seated at this table.',
   [ErrorCodes.SESSION_EXPIRED]: 'Your session has expired. Please rejoin the table.',
   [ErrorCodes.INVALID_SESSION]: 'Your session is invalid. Please rejoin the table.',

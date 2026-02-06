@@ -160,26 +160,26 @@ export default function TableDetailPage() {
           <h2 className="mb-4 text-xl font-semibold">Configuration</h2>
           <dl className="space-y-2">
             <div>
-              <dt className="text-sm font-medium text-gray-500">Blinds</dt>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Blinds</dt>
               <dd className="text-sm">
                 {table.config.blinds.small} / {table.config.blinds.big}
               </dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Max Seats</dt>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Max Seats</dt>
               <dd className="text-sm">{table.config.maxSeats}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Initial Stack</dt>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Initial Stack</dt>
               <dd className="text-sm">{table.config.initialStack}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Action Timeout</dt>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Action Timeout</dt>
               <dd className="text-sm">{table.config.actionTimeoutMs}ms</dd>
             </div>
             {table.current_hand_number !== null && (
               <div>
-                <dt className="text-sm font-medium text-gray-500">Current Hand</dt>
+                <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Current Hand</dt>
                 <dd className="text-sm">#{table.current_hand_number}</dd>
               </div>
             )}
@@ -189,15 +189,15 @@ export default function TableDetailPage() {
         <Card>
           <h2 className="mb-4 text-xl font-semibold">Final Standings</h2>
           {table.status !== 'ended' && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               Final standings will appear when the game ends.
             </p>
           )}
           {table.status === 'ended' && finalStandingsLoading && (
-            <p className="text-sm text-gray-500">Loading final standings...</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading final standings...</p>
           )}
           {table.status === 'ended' && !finalStandingsLoading && (!finalStacks || finalStacks.length === 0) && (
-            <p className="text-sm text-gray-500">No final standings.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">No final standings.</p>
           )}
           {table.status === 'ended' && !finalStandingsLoading && finalStacks && finalStacks.length > 0 && (
             <div className="space-y-2">
@@ -211,7 +211,7 @@ export default function TableDetailPage() {
                   <div
                     key={standing.seatId}
                     className={`flex items-center justify-between p-2 rounded ${
-                      i === 0 ? 'bg-yellow-50 border border-yellow-200' : ''
+                      i === 0 ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : ''
                     }`}
                   >
                     <div>
@@ -219,7 +219,7 @@ export default function TableDetailPage() {
                         {i + 1}. Seat {standing.seatId}
                       </span>
                       {agentName && (
-                        <div className="text-sm text-gray-600">{agentName}</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">{agentName}</div>
                       )}
                     </div>
                     <div className="text-right">
@@ -227,10 +227,10 @@ export default function TableDetailPage() {
                       <div
                         className={`text-xs ${
                           standing.netChange > 0
-                            ? 'text-green-600'
+                            ? 'text-green-600 dark:text-green-400'
                             : standing.netChange < 0
-                              ? 'text-red-600'
-                              : 'text-gray-500'
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-gray-500 dark:text-gray-400'
                         }`}
                       >
                         {standing.netChange > 0 ? '+' : ''}

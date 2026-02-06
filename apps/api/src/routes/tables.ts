@@ -16,6 +16,7 @@ import { generateSessionToken } from '../auth/sessionToken.js';
 import { config } from '../config.js';
 import * as db from '../db.js';
 import { tableManager } from '../table/manager.js';
+import { startTableRuntime } from '../table/startTable.js';
 import { generateSessionId } from '../utils/crypto.js';
 import { broadcastManager } from '../ws/broadcastManager.js';
 
@@ -136,12 +137,15 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
           });
         }
 
-        // Check table status
-        if (table.status === 'ended') {
+        // Only waiting tables are joinable
+        if (table.status !== 'waiting') {
+          const code = table.status === 'ended'
+            ? ErrorCodes.TABLE_ENDED
+            : ErrorCodes.INVALID_TABLE_STATE;
           return reply.status(400).send({
             error: {
-              code: ErrorCodes.INVALID_TABLE_STATE,
-              message: 'Table has ended',
+              code,
+              message: `Cannot join a table that is ${table.status}`,
             },
           });
         }
@@ -182,7 +186,7 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
         // Generate session token
         const sessionToken = generateSessionToken(sessionId, agentId, tableId, seatId);
 
-        // Add player to runtime if table is started
+        // Add player to runtime if table is already running
         const managedTable = tableManager.get(tableId);
         if (managedTable) {
           managedTable.runtime.addPlayer(seatId, agentId, agentName, tableConfig.initialStack);
@@ -195,6 +199,19 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
             agentName,
             tableConfig.initialStack
           );
+        } else if (table.status === 'waiting') {
+          // Auto-start if we have enough players
+          const allSeats = await db.getSeats(tableId);
+          const seatedCount = allSeats.filter((s) => s.agent_id).length;
+
+          if (seatedCount >= tableConfig.minPlayersToStart) {
+            try {
+              await startTableRuntime(tableId);
+            } catch (startErr) {
+              fastify.log.error(startErr, 'Auto-start failed after join');
+              // Non-fatal: the agent is seated, they can connect WS and wait
+            }
+          }
         }
 
         return reply.status(200).send({

@@ -2,6 +2,7 @@ import {
   ErrorCodes,
   MIN_SUPPORTED_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
+  TableConfigSchema,
 } from '@moltpoker/shared';
 import type { FastifyInstance , FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
@@ -10,7 +11,8 @@ import type { WebSocket } from 'ws';
 import { verifyAdminAuth } from '../auth/adminAuth.js';
 import { validateSession } from '../auth/sessionToken.js';
 import { config } from '../config.js';
-import { updateAgentLastSeen } from '../db.js';
+import * as db from '../db.js';
+import { cancelAbandonment, checkAbandonment } from '../table/abandonmentHandler.js';
 import { tableManager } from '../table/manager.js';
 
 import { broadcastManager } from './broadcastManager.js';
@@ -44,30 +46,60 @@ export function registerWebSocketRoutes(fastify: FastifyInstance): void {
 
     // Check if table runtime exists
     const table = tableManager.get(tableId);
-    if (!table) {
-      sendErrorAndClose(ws, ErrorCodes.TABLE_NOT_FOUND, 'Table not found or not started');
-      return;
+
+    if (table) {
+      // Table is running — register and send welcome + game state
+      cancelAbandonment(tableId);
+      broadcastManager.register(tableId, agentId, seatId, ws);
+
+      // Update last seen
+      db.updateAgentLastSeen(agentId).catch(() => {});
+
+      // Send welcome message
+      broadcastManager.sendWelcome(tableId, agentId, {
+        protocol_version: PROTOCOL_VERSION,
+        min_supported_protocol_version: MIN_SUPPORTED_PROTOCOL_VERSION,
+        skill_doc_url: config.skillDocUrl,
+        seat_id: seatId,
+        agent_id: agentId,
+        action_timeout_ms: table.runtime.getActionTimeoutMs(),
+      });
+
+      // Send current game state
+      const state = table.runtime.getStateForSeat(seatId);
+      broadcastManager.sendGameState(tableId, agentId, state);
+    } else {
+      // No runtime — check if table exists in DB and is waiting
+      const dbTable = await db.getTable(tableId);
+      if (!dbTable) {
+        sendErrorAndClose(ws, ErrorCodes.TABLE_NOT_FOUND, 'Table not found');
+        return;
+      }
+
+      if (dbTable.status === 'ended') {
+        sendErrorAndClose(ws, ErrorCodes.TABLE_ENDED, 'Table has ended');
+        return;
+      }
+
+      // Table exists but is waiting — park the socket
+      const tableConfig = TableConfigSchema.parse(dbTable.config);
+      const seats = await db.getSeats(tableId);
+      const currentPlayers = seats.filter((s) => s.agent_id).length;
+
+      broadcastManager.registerPending(tableId, agentId, seatId, ws);
+
+      // Update last seen
+      db.updateAgentLastSeen(agentId).catch(() => {});
+
+      // Send table_status so the client knows it's waiting
+      broadcastManager.sendTableStatus(ws, tableId, {
+        status: dbTable.status as 'waiting' | 'running' | 'ended',
+        seat_id: seatId,
+        agent_id: agentId,
+        min_players_to_start: tableConfig.minPlayersToStart,
+        current_players: currentPlayers,
+      });
     }
-
-    // Register connection
-    broadcastManager.register(tableId, agentId, seatId, ws);
-
-    // Update last seen
-    updateAgentLastSeen(agentId).catch(() => {});
-
-    // Send welcome message
-    broadcastManager.sendWelcome(tableId, agentId, {
-      protocol_version: PROTOCOL_VERSION,
-      min_supported_protocol_version: MIN_SUPPORTED_PROTOCOL_VERSION,
-      skill_doc_url: config.skillDocUrl,
-      seat_id: seatId,
-      agent_id: agentId,
-      action_timeout_ms: table.runtime.getActionTimeoutMs(),
-    });
-
-    // Send current game state
-    const state = table.runtime.getStateForSeat(seatId);
-    broadcastManager.sendGameState(tableId, agentId, state);
 
     // Handle incoming messages
     ws.on('message', async (data) => {
@@ -85,8 +117,10 @@ export function registerWebSocketRoutes(fastify: FastifyInstance): void {
     // Handle disconnect
     ws.on('close', () => {
       broadcastManager.unregister(tableId, agentId);
-
-      // If it was this player's turn, the timeout handler will manage it
+      // If this was a running table and no connections remain, start grace timer
+      if (tableManager.has(tableId)) {
+        checkAbandonment(tableId);
+      }
     });
 
     // Handle errors

@@ -15,6 +15,7 @@ export default function CreateTablePage() {
   const [formData, setFormData] = useState<Partial<TableConfig> & { seed?: string }>({
     blinds: { small: 10, big: 20 },
     maxSeats: 6,
+    minPlayersToStart: 2,
     initialStack: 1000,
     actionTimeoutMs: 30000,
     seed: '',
@@ -62,7 +63,7 @@ export default function CreateTablePage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="smallBlind" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="smallBlind" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Small Blind
               </label>
               <Input
@@ -81,7 +82,7 @@ export default function CreateTablePage() {
               />
             </div>
             <div>
-              <label htmlFor="bigBlind" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="bigBlind" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Big Blind
               </label>
               <Input
@@ -101,29 +102,51 @@ export default function CreateTablePage() {
             </div>
           </div>
 
-          <div>
-            <label htmlFor="maxSeats" className="block text-sm font-medium text-gray-700">
-              Max Seats
-            </label>
-            <Select
-              id="maxSeats"
-              value={formData.maxSeats}
-              onChange={(e) =>
-                setFormData({ ...formData, maxSeats: parseInt(e.target.value, 10) })
-              }
-              required
-              className="mt-1"
-            >
-              {[2, 3, 4, 5, 6].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </Select>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="maxSeats" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Max Seats
+              </label>
+              <Select
+                id="maxSeats"
+                value={formData.maxSeats}
+                onChange={(e) =>
+                  setFormData({ ...formData, maxSeats: parseInt(e.target.value, 10) })
+                }
+                required
+                className="mt-1"
+              >
+                {[2, 3, 4, 5, 6].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label htmlFor="minPlayersToStart" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Min Players to Start
+              </label>
+              <Select
+                id="minPlayersToStart"
+                value={formData.minPlayersToStart}
+                onChange={(e) =>
+                  setFormData({ ...formData, minPlayersToStart: parseInt(e.target.value, 10) })
+                }
+                required
+                className="mt-1"
+              >
+                {[2, 3, 4, 5, 6].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
 
           <div>
-            <label htmlFor="initialStack" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="initialStack" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Initial Stack
             </label>
             <Input
@@ -140,7 +163,7 @@ export default function CreateTablePage() {
           </div>
 
           <div>
-            <label htmlFor="actionTimeoutMs" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="actionTimeoutMs" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Action Timeout (ms)
             </label>
             <Input
@@ -157,7 +180,7 @@ export default function CreateTablePage() {
           </div>
 
           <div>
-            <label htmlFor="seed" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="seed" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Seed (optional)
             </label>
             <Input
@@ -170,7 +193,9 @@ export default function CreateTablePage() {
           </div>
 
           {error && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</div>
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-200">
+              {error}
+            </div>
           )}
 
           <div className="flex justify-end space-x-4">

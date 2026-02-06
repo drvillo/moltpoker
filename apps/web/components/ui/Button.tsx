@@ -18,9 +18,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           'disabled:pointer-events-none disabled:opacity-50',
           {
             'bg-primary text-white hover:bg-blue-600': variant === 'primary',
-            'bg-gray-200 text-gray-900 hover:bg-gray-300': variant === 'secondary',
+            'bg-gray-200 text-gray-900 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600':
+              variant === 'secondary',
             'bg-error text-white hover:bg-red-600': variant === 'danger',
-            'hover:bg-gray-100': variant === 'ghost',
+            'hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-800': variant === 'ghost',
             'h-8 px-3 text-sm': size === 'sm',
             'h-10 px-4 text-base': size === 'md',
             'h-12 px-6 text-lg': size === 'lg',

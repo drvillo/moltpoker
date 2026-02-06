@@ -4,14 +4,76 @@
 import { MoltPokerClient, MoltPokerWsClient } from '@moltpoker/sdk';
 import type { GameStatePayload } from '@moltpoker/shared';
 import { program } from 'commander';
+import { config as loadEnv } from 'dotenv';
+import { existsSync } from 'fs';
+import { dirname, join, resolve } from 'path';
 
 import { CallStationAgent } from './callStation.js';
+import { LlmAgent } from './llm.js';
 import { RandomAgent } from './random.js';
 import { TightAgent } from './tight.js';
 import type { PokerAgent } from './types.js';
+import {
+  formatChosenAction,
+  formatCommunityLine,
+  formatHandCompleteHeader,
+  formatHandHeader,
+  formatLegalActionsLine,
+  formatMyCardsLine,
+  formatSeatResultLine,
+  formatStackLine,
+} from './utils/output.js';
+
+function loadEnvFiles(): void {
+  const envFiles = ['.env.local', '.env']
+  let currentDir = process.cwd()
+
+  for (let depth = 0; depth < 4; depth++) {
+    for (const envFile of envFiles) {
+      const envPath = resolve(currentDir, envFile)
+      if (existsSync(envPath)) loadEnv({ path: envPath, override: false })
+    }
+
+    const parentDir = dirname(currentDir)
+    if (parentDir === currentDir) break
+    currentDir = parentDir
+  }
+}
+
+loadEnvFiles()
+
+/**
+ * Parse a provider:model string (e.g. "openai:gpt-4.1") into an AI SDK LanguageModel.
+ * Dynamically imports the provider package to avoid loading unused providers.
+ */
+async function resolveModel(modelSpec: string) {
+  const [provider, ...rest] = modelSpec.split(':');
+  const modelId = rest.join(':'); // rejoin in case model name contains ':'
+
+  if (!provider || !modelId)
+    throw new Error(
+      `Invalid model spec "${modelSpec}". Expected format: provider:model (e.g. openai:gpt-4.1)`,
+    );
+
+  switch (provider.toLowerCase()) {
+    case 'openai': {
+      const { openai } = await import('@ai-sdk/openai');
+      return openai(modelId);
+    }
+    case 'anthropic': {
+      const { anthropic } = await import('@ai-sdk/anthropic');
+      return anthropic(modelId);
+    }
+    default:
+      throw new Error(`Unsupported LLM provider: "${provider}". Supported: openai, anthropic`);
+  }
+}
 
 // Agent factory
-function createAgent(type: string): PokerAgent {
+async function createAgent(
+  type: string,
+  options: { model?: string; skillDoc?: string },
+): Promise<PokerAgent> {
   switch (type.toLowerCase()) {
     case 'random':
       return new RandomAgent();
@@ -20,6 +82,12 @@ function createAgent(type: string): PokerAgent {
     case 'callstation':
     case 'call-station':
       return new CallStationAgent();
+    case 'llm': {
+      if (!options.model)
+        throw new Error('--model is required for LLM agent (e.g. openai:gpt-4.1)');
+      const model = await resolveModel(options.model);
+      return new LlmAgent({ model, skillDocPath: options.skillDoc });
+    }
     default:
       throw new Error(`Unknown agent type: ${type}`);
   }
@@ -32,8 +100,14 @@ async function runAgent(options: {
   tableId?: string;
   name?: string;
   apiKey?: string;
+  model?: string;
+  skillDoc?: string;
+  llmLog?: boolean;
 }): Promise<void> {
-  const agent = createAgent(options.type);
+  const agent = await createAgent(options.type, {
+    model: options.model,
+    skillDoc: options.skillDoc,
+  });
   console.log(`Starting ${agent.name}...`);
 
   // Create HTTP client
@@ -70,9 +144,21 @@ async function runAgent(options: {
     console.log(`Found table ${tableId}`);
   }
 
+  if (!tableId) {
+    throw new Error('Table ID is required to join');
+  }
+  const resolvedTableId = tableId;
+
+  // Enable LLM logging if requested
+  if (options.llmLog && agent instanceof LlmAgent) {
+    const logPath = join(process.cwd(), 'logs', `llm-${resolvedTableId}.jsonl`)
+    agent.enableLogging(logPath)
+    console.log(`LLM logging enabled: ${logPath}`)
+  }
+
   // Join table
-  console.log(`Joining table ${tableId}...`);
-  const joinResponse = await client.joinTable(tableId);
+  console.log(`Joining table ${resolvedTableId}...`);
+  const joinResponse = await client.joinTable(resolvedTableId);
   console.log(`Joined as seat ${joinResponse.seat_id}`);
 
   // Connect WebSocket
@@ -84,6 +170,34 @@ async function runAgent(options: {
 
   let currentState: GameStatePayload | null = null;
   let mySeatId = joinResponse.seat_id;
+  let isShuttingDown = false;
+
+  async function shutdown(reason: string): Promise<void> {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`\nShutting down (${reason})...`);
+    ws.disconnect();
+    try {
+      await client.leaveTable(resolvedTableId);
+      console.log('Left table');
+    } catch {
+      // Ignore errors on shutdown
+    }
+    process.exit(0);
+  }
+
+  function safeSendAction(action: Parameters<MoltPokerWsClient['sendAction']>[0], expectedSeq?: number): void {
+    if (isShuttingDown) return;
+    if (!ws.isConnected()) {
+      console.warn('Skipping action: WebSocket is disconnected');
+      return;
+    }
+    try {
+      ws.sendAction(action, expectedSeq);
+    } catch (err) {
+      console.error('Failed to send action:', err);
+    }
+  }
 
   // Handle welcome
   ws.on('welcome', (payload) => {
@@ -92,31 +206,31 @@ async function runAgent(options: {
   });
 
   // Handle game state
-  ws.on('game_state', (state) => {
+  ws.on('game_state', async (state) => {
     currentState = state;
-    console.log(`\nHand ${state.handNumber}, Phase: ${state.phase}`);
-    console.log(`Community: ${state.communityCards.map((c) => c.rank + c.suit).join(' ') || 'none'}`);
-    console.log(`Pots: ${state.pots.map((p) => p.amount).join(', ') || 0}`);
+    const totalPot = state.pots.reduce((sum, p) => sum + p.amount, 0);
+    console.log(`\n${formatHandHeader({ handNumber: state.handNumber, phase: state.phase, totalPot })}`);
+    console.log(formatCommunityLine(state.communityCards));
 
     // Log our cards
     const myPlayer = state.players.find((p) => p.seatId === mySeatId);
     if (myPlayer?.holeCards) {
-      console.log(`My cards: ${myPlayer.holeCards.map((c) => c.rank + c.suit).join(' ')}`);
-      console.log(`My stack: ${myPlayer.stack}`);
+      console.log(formatMyCardsLine({ cards: myPlayer.holeCards, seatId: mySeatId }));
+      console.log(formatStackLine({ stack: myPlayer.stack, toCall: state.toCall ?? 0 }));
     }
 
     // Check if it's our turn
     if (state.currentSeat === mySeatId && state.legalActions && state.legalActions.length > 0) {
-      console.log(`It's my turn! Legal actions: ${state.legalActions.map((a) => a.kind).join(', ')}`);
+      console.log(formatLegalActionsLine(state.legalActions));
 
       try {
-        const action = agent.getAction(state, state.legalActions);
-        console.log(`Action: ${action.kind}${action.amount ? ` ${action.amount}` : ''}`);
-        ws.sendAction(action, state.seq);
+        const action = await agent.getAction(state, state.legalActions);
+        console.log(formatChosenAction(action));
+        safeSendAction(action, state.seq);
       } catch (err) {
         console.error('Error getting action:', err);
         // Default to fold
-        ws.sendAction({ action_id: crypto.randomUUID(), kind: 'fold' }, state.seq);
+        safeSendAction({ action_id: crypto.randomUUID(), kind: 'fold' }, state.seq);
       }
     }
   });
@@ -134,15 +248,18 @@ async function runAgent(options: {
 
   // Handle hand complete
   ws.on('hand_complete', (payload) => {
-    console.log(`\n=== Hand ${payload.handNumber} Complete ===`);
+    console.log(`\n${formatHandCompleteHeader(payload.handNumber)}`);
     for (const result of payload.results) {
       const isMe = currentState?.players.find(
         (p) => p.seatId === result.seatId
       )?.seatId === mySeatId;
-      const marker = isMe ? ' (ME)' : '';
-      console.log(
-        `Seat ${result.seatId}${marker}: ${result.holeCards.map((c) => c.rank + c.suit).join(' ')} - ${result.handRank || 'n/a'} - Won: ${result.winnings}`
-      );
+      console.log(formatSeatResultLine({
+        seatId: result.seatId,
+        isMe: isMe ?? false,
+        cards: result.holeCards,
+        handRank: result.handRank,
+        winnings: result.winnings,
+      }));
 
       if (isMe) {
         agent.onHandComplete?.(payload.handNumber, result.winnings);
@@ -160,9 +277,34 @@ async function runAgent(options: {
     console.log(`Player left: seat ${payload.seatId}`);
   });
 
+  // Handle table status (waiting for game to start)
+  ws.on('table_status', (payload) => {
+    if (payload.status === 'ended') {
+      const reason = payload.reason ?? 'table ended';
+      console.log(`Table status: ended (${reason})`);
+      shutdown(reason).catch((err) => {
+        console.error('Failed to shut down cleanly:', err);
+        process.exit(1);
+      });
+      return;
+    }
+
+    console.log(`Table status: ${payload.status} (${payload.current_players}/${payload.min_players_to_start} players)`);
+    if (payload.status === 'waiting') {
+      console.log('Waiting for more players to join...');
+    }
+  });
+
   // Handle connection events
   ws.on('disconnected', (code, reason) => {
     console.log(`Disconnected: ${code} - ${reason}`);
+    const normalizedReason = (reason ?? '').toLowerCase();
+    if (!isShuttingDown && (normalizedReason.includes('table ended') || normalizedReason.includes('kicked'))) {
+      shutdown(reason ?? 'disconnected').catch((err) => {
+        console.error('Failed to shut down cleanly:', err);
+        process.exit(1);
+      });
+    }
   });
 
   ws.on('reconnecting', (attempt) => {
@@ -174,15 +316,7 @@ async function runAgent(options: {
 
   // Handle shutdown
   process.on('SIGINT', async () => {
-    console.log('\nShutting down...');
-    ws.disconnect();
-    try {
-      await client.leaveTable(tableId);
-      console.log('Left table');
-    } catch {
-      // Ignore errors on shutdown
-    }
-    process.exit(0);
+    await shutdown('interrupt');
   });
 
   // Keep running
@@ -194,11 +328,14 @@ program
   .name('molt-agent')
   .description('Run a MoltPoker reference agent')
   .version('0.1.0')
-  .requiredOption('-t, --type <type>', 'Agent type: random, tight, callstation')
+  .requiredOption('-t, --type <type>', 'Agent type: random, tight, callstation, llm')
   .option('-s, --server <url>', 'Server URL', 'http://localhost:3000')
   .option('--table-id <id>', 'Specific table ID to join')
   .option('--name <name>', 'Agent display name')
   .option('--api-key <key>', 'Use existing API key')
+  .option('--model <provider:model>', 'LLM model (e.g. openai:gpt-4.1, anthropic:claude-sonnet-4-5)')
+  .option('--skill-doc <path>', 'Path to skill.md file (required for LLM agent)')
+  .option('--llm-log', 'Enable JSONL logging of LLM prompts/responses (per table)')
   .action(async (options) => {
     try {
       await runAgent(options);

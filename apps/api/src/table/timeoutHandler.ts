@@ -1,6 +1,7 @@
 import { getDefaultTimeoutAction } from '@moltpoker/poker';
 
 import { broadcastManager } from '../ws/broadcastManager.js';
+import * as db from '../db.js';
 
 import { tableManager } from './manager.js';
 
@@ -43,36 +44,39 @@ export function scheduleNextHand(tableId: string): void {
     // Start the next hand
     const handStarted = runtime.startHand();
 
-    if (handStarted) {
-      // Log hand start
-      const players = runtime.getAllPlayers();
-      const config = runtime.getConfig();
-
-      await eventLogger.log(
-        'HAND_START',
-        {
-          handNumber: runtime.getHandNumber(),
-          dealerSeat: runtime.getDealerSeat(),
-          smallBlindSeat: players.find((p) => p.bet === config.blinds.small)?.seatId ?? -1,
-          bigBlindSeat: players.find((p) => p.bet === config.blinds.big)?.seatId ?? -1,
-          smallBlind: config.blinds.small,
-          bigBlind: config.blinds.big,
-          players: players.map((p) => ({
-            seatId: p.seatId,
-            agentId: p.agentId,
-            stack: p.stack + p.bet,
-            holeCards: p.holeCards,
-          })),
-        },
-        runtime.getHandNumber()
-      );
-
-      // Broadcast game state to all
-      broadcastManager.broadcastGameState(tableId, runtime);
-
-      // Schedule timeout for first player
-      scheduleActionTimeout(tableId);
+    if (!handStarted) {
+      await endCompletedTable(tableId, 'insufficient_players');
+      return;
     }
+
+    // Log hand start
+    const players = runtime.getAllPlayers();
+    const config = runtime.getConfig();
+
+    await eventLogger.log(
+      'HAND_START',
+      {
+        handNumber: runtime.getHandNumber(),
+        dealerSeat: runtime.getDealerSeat(),
+        smallBlindSeat: players.find((p) => p.bet === config.blinds.small)?.seatId ?? -1,
+        bigBlindSeat: players.find((p) => p.bet === config.blinds.big)?.seatId ?? -1,
+        smallBlind: config.blinds.small,
+        bigBlind: config.blinds.big,
+        players: players.map((p) => ({
+          seatId: p.seatId,
+          agentId: p.agentId,
+          stack: p.stack + p.bet,
+          holeCards: p.holeCards,
+        })),
+      },
+      runtime.getHandNumber()
+    );
+
+    // Broadcast game state to all
+    broadcastManager.broadcastGameState(tableId, runtime);
+
+    // Schedule timeout for first player
+    scheduleActionTimeout(tableId);
   }, NEXT_HAND_DELAY_MS);
 }
 
@@ -181,4 +185,40 @@ export function clearActionTimeout(tableId: string, seatId: number): void {
  */
 export function clearScheduledNextHand(tableId: string): void {
   scheduledNextHandForHand.delete(tableId);
+}
+
+async function endCompletedTable(tableId: string, reason: string): Promise<void> {
+  const managedTable = tableManager.get(tableId);
+  if (!managedTable) return;
+
+  const { runtime, eventLogger } = managedTable;
+  const finalStacks = runtime.getAllPlayers().map((player) => ({
+    seatId: player.seatId,
+    agentId: player.agentId,
+    stack: player.stack,
+  }));
+
+  await eventLogger.log('TABLE_ENDED', {
+    reason,
+    finalStacks,
+  });
+
+  broadcastManager.broadcastTableStatus(
+    tableId,
+    {
+      status: 'ended',
+      reason,
+      final_stacks: finalStacks.map((stack) => ({
+        seat_id: stack.seatId,
+        agent_id: stack.agentId,
+        stack: stack.stack,
+      })),
+    },
+    { includeObservers: true }
+  );
+
+  broadcastManager.disconnectAll(tableId);
+  clearScheduledNextHand(tableId);
+  tableManager.destroy(tableId);
+  await db.updateTableStatus(tableId, 'ended');
 }

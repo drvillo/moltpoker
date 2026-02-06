@@ -9,7 +9,8 @@ import {
 
 import * as db from '../db.js';
 import { tableManager } from '../table/manager.js';
-import { scheduleActionTimeout, clearScheduledNextHand } from '../table/timeoutHandler.js';
+import { startTableRuntime } from '../table/startTable.js';
+import { clearScheduledNextHand, scheduleActionTimeout } from '../table/timeoutHandler.js';
 import { generateTableId } from '../utils/crypto.js';
 import { broadcastManager } from '../ws/broadcastManager.js';
 import { adminAuthMiddleware } from '../auth/adminAuth.js';
@@ -115,77 +116,12 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
           });
         }
 
-        const tableConfig = TableConfigSchema.parse(table.config);
-
-        // Create table runtime
-        const managedTable = await tableManager.create(tableId, tableConfig, table.seed ?? undefined);
-
-        // Add players to runtime
-        for (const seat of seatedPlayers) {
-          const agentName = seat.agents?.name ?? null;
-          managedTable.runtime.addPlayer(seat.seat_id, seat.agent_id, agentName, seat.stack);
-        }
-
-        // Update status
-        await db.updateTableStatus(tableId, 'running');
-
-        // Log player joined events
-        for (const seat of seatedPlayers) {
-          const agentName = seat.agents?.name ?? null;
-          await managedTable.eventLogger.log('PLAYER_JOINED', {
-            seatId: seat.seat_id,
-            agentId: seat.agent_id,
-            agentName,
-            stack: seat.stack,
-          });
-        }
-
-        // Log table started event
-        await managedTable.eventLogger.log('TABLE_STARTED', {
-          config: {
-            blinds: tableConfig.blinds,
-            maxSeats: tableConfig.maxSeats,
-            initialStack: tableConfig.initialStack,
-            actionTimeoutMs: tableConfig.actionTimeoutMs,
-            seed: table.seed,
-          },
-        });
-
-        // Start first hand
-        const handStarted = managedTable.runtime.startHand();
-
-        if (handStarted) {
-          // Log hand start
-          const runtime = managedTable.runtime;
-          const players = runtime.getAllPlayers();
-
-          await managedTable.eventLogger.log(
-            'HAND_START',
-            {
-              handNumber: runtime.getHandNumber(),
-              dealerSeat: runtime.getDealerSeat(),
-              smallBlindSeat: players.find((p) => p.bet === tableConfig.blinds.small)?.seatId ?? -1,
-              bigBlindSeat: players.find((p) => p.bet === tableConfig.blinds.big)?.seatId ?? -1,
-              smallBlind: tableConfig.blinds.small,
-              bigBlind: tableConfig.blinds.big,
-              players: players.map((p) => ({
-                seatId: p.seatId,
-                agentId: p.agentId,
-                stack: p.stack + p.bet, // Original stack before blinds
-                holeCards: p.holeCards,
-              })),
-            },
-            runtime.getHandNumber()
-          );
-
-          // Schedule timeout for first player
-          scheduleActionTimeout(tableId);
-        }
+        const result = await startTableRuntime(tableId);
 
         return reply.status(200).send({
           success: true,
           message: 'Table started',
-          hand_number: managedTable.runtime.getHandNumber(),
+          hand_number: result.handNumber,
         });
       } catch (err) {
         fastify.log.error(err, 'Failed to start table');
@@ -237,6 +173,20 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
             finalStacks,
           });
 
+          broadcastManager.broadcastTableStatus(
+            tableId,
+            {
+              status: 'ended',
+              reason: 'admin_stopped',
+              final_stacks: finalStacks.map((stack) => ({
+                seat_id: stack.seatId,
+                agent_id: stack.agentId,
+                stack: stack.stack,
+              })),
+            },
+            { includeObservers: true }
+          );
+
           // Disconnect all WebSocket connections
           broadcastManager.disconnectAll(tableId);
 
@@ -245,6 +195,13 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
 
           // Destroy runtime
           tableManager.destroy(tableId);
+        } else {
+          broadcastManager.broadcastTableStatus(
+            tableId,
+            { status: 'ended', reason: 'admin_stopped' },
+            { includeObservers: true }
+          );
+          broadcastManager.disconnectAll(tableId);
         }
 
         // Update status

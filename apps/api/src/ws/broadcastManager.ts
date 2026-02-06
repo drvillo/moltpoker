@@ -4,12 +4,19 @@ import type {
   ErrorPayload,
   GameStatePayload,
   HandCompletePayload,
+  TableStatusPayload,
   WelcomePayload,
   WsMessageEnvelope,
 } from '@moltpoker/shared';
 import type { WebSocket } from 'ws';
 
 interface Connection {
+  ws: WebSocket;
+  agentId: string;
+  seatId: number;
+}
+
+interface PendingConnection {
   ws: WebSocket;
   agentId: string;
   seatId: number;
@@ -23,6 +30,8 @@ class BroadcastManager {
   private connections: Map<string, Map<string, Connection>> = new Map();
   // tableId -> observer connections
   private observers: Map<string, Set<WebSocket>> = new Map();
+  // tableId -> pending connections (waiting tables without runtime)
+  private pendingConnections: Map<string, Map<string, PendingConnection>> = new Map();
 
   /**
    * Register a connection for a table
@@ -77,6 +86,110 @@ class BroadcastManager {
       tableObservers.delete(ws);
       if (tableObservers.size === 0) {
         this.observers.delete(tableId);
+      }
+    }
+  }
+
+  /**
+   * Register a pending connection (for waiting tables without a runtime)
+   */
+  registerPending(tableId: string, agentId: string, seatId: number, ws: WebSocket): void {
+    if (!this.pendingConnections.has(tableId)) {
+      this.pendingConnections.set(tableId, new Map());
+    }
+
+    const tablePending = this.pendingConnections.get(tableId)!;
+    tablePending.set(agentId, { ws, agentId, seatId });
+
+    ws.on('close', () => {
+      this.unregisterPending(tableId, agentId);
+    });
+  }
+
+  /**
+   * Unregister a pending connection
+   */
+  unregisterPending(tableId: string, agentId: string): void {
+    const tablePending = this.pendingConnections.get(tableId);
+    if (tablePending) {
+      tablePending.delete(agentId);
+      if (tablePending.size === 0) {
+        this.pendingConnections.delete(tableId);
+      }
+    }
+  }
+
+  /**
+   * Get all pending connections for a table
+   */
+  getPendingConnections(tableId: string): PendingConnection[] {
+    const tablePending = this.pendingConnections.get(tableId);
+    return tablePending ? [...tablePending.values()] : [];
+  }
+
+  /**
+   * Promote all pending connections to active connections.
+   * Called when a waiting table transitions to running.
+   */
+  promotePendingConnections(tableId: string): PendingConnection[] {
+    const tablePending = this.pendingConnections.get(tableId);
+    if (!tablePending || tablePending.size === 0) return [];
+
+    const promoted: PendingConnection[] = [];
+    for (const pending of tablePending.values()) {
+      // Register as a real connection (skip close listener since pending already has one)
+      if (!this.connections.has(tableId)) {
+        this.connections.set(tableId, new Map());
+      }
+      this.connections.get(tableId)!.set(pending.agentId, {
+        ws: pending.ws,
+        agentId: pending.agentId,
+        seatId: pending.seatId,
+      });
+      promoted.push(pending);
+    }
+
+    // Clear pending map for this table
+    this.pendingConnections.delete(tableId);
+    return promoted;
+  }
+
+  /**
+   * Send table_status message to a connection
+   */
+  sendTableStatus(ws: WebSocket, tableId: string, payload: TableStatusPayload): void {
+    this.send(ws, this.createEnvelope('table_status', payload, tableId));
+  }
+
+  /**
+   * Broadcast table_status to all connections for a table
+   */
+  broadcastTableStatus(
+    tableId: string,
+    payload: TableStatusPayload,
+    options?: { includeObservers?: boolean; includePending?: boolean }
+  ): void {
+    const { includeObservers = false, includePending = true } = options ?? {};
+
+    const envelope = this.createEnvelope('table_status', payload, tableId);
+    const connections = this.getConnections(tableId);
+    for (const conn of connections) {
+      this.send(conn.ws, envelope);
+    }
+
+    if (includePending) {
+      const pending = this.getPendingConnections(tableId);
+      for (const conn of pending) {
+        this.send(conn.ws, envelope);
+      }
+    }
+
+    if (includeObservers) {
+      const observers = this.observers.get(tableId);
+      if (observers) {
+        for (const ws of observers) {
+          this.send(ws, envelope);
+        }
       }
     }
   }
@@ -287,6 +400,13 @@ class BroadcastManager {
       conn.ws.close(1000, 'Table ended');
     }
     this.connections.delete(tableId);
+
+    // Close pending connections too
+    const pending = this.getPendingConnections(tableId);
+    for (const conn of pending) {
+      conn.ws.close(1000, 'Table ended');
+    }
+    this.pendingConnections.delete(tableId);
 
     const observers = this.observers.get(tableId);
     if (observers) {

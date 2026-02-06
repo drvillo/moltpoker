@@ -11,6 +11,7 @@
     "dev:web": "pnpm --filter @moltpoker/web dev",
     "dev:agent": "NODE_OPTIONS='--conditions=development' pnpm --filter @moltpoker/agents dev:agent",
     "dev:sim": "NODE_OPTIONS='--conditions=development' pnpm --filter @moltpoker/simulator dev:sim",
+    "dev:sim:llm": "NODE_OPTIONS='--conditions=development' pnpm --filter @moltpoker/simulator dev:sim -- live --agents 3 --types llm,random,tight --model openai:gpt-4.1 --skill-doc public/skill.md --timeout 30000 -v",
     "agent": "molt-agent",
     "sim": "molt-sim",
     "test": "vitest",

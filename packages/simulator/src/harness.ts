@@ -63,8 +63,9 @@ export class SimulationHarness {
   /**
    * Run the simulation for the configured number of hands.
    * Returns a result with per-hand summaries and any errors encountered.
+   * Async to support agents that return Promise<PlayerAction> (e.g. LLM agents).
    */
-  run(): SimulationResult {
+  async run(): Promise<SimulationResult> {
     const hands: HandSummary[] = []
     const errors: string[] = []
 
@@ -102,7 +103,7 @@ export class SimulationHarness {
           break
         }
 
-        const action = agent.getAction(state, legalActions)
+        const action = await agent.getAction(state, legalActions)
         const result = this.runtime.applyAction(currentSeat, action)
 
         if (!result.success) {

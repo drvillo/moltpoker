@@ -57,6 +57,7 @@ import {
   PlayerStateSchema,
   PongPayloadSchema,
   PotSchema,
+  TableStatusPayloadSchema,
   WelcomePayloadSchema,
   WsMessageEnvelopeSchema,
   WsMessageTypeSchema,
@@ -102,6 +103,7 @@ export type HandResult = z.infer<typeof HandResultSchema>;
 export type HandCompletePayload = z.infer<typeof HandCompletePayloadSchema>;
 export type PingPayload = z.infer<typeof PingPayloadSchema>;
 export type PongPayload = z.infer<typeof PongPayloadSchema>;
+export type TableStatusPayload = z.infer<typeof TableStatusPayloadSchema>;
 export type WsMessageType = z.infer<typeof WsMessageTypeSchema>;
 export type WsMessageEnvelope = z.infer<typeof WsMessageEnvelopeSchema>;
 export type ClientActionMessage = z.infer<typeof ClientActionMessageSchema>;

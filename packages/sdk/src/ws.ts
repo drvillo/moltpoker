@@ -6,9 +6,12 @@ import type {
   GameStatePayload,
   HandCompletePayload,
   PlayerAction,
+  TableStatusPayload,
   WelcomePayload,
   WsMessageEnvelope,
 } from '@moltpoker/shared';
+import { ErrorCodes } from '@moltpoker/shared';
+import type { ErrorCode } from '@moltpoker/shared';
 import WebSocket from 'ws';
 
 
@@ -19,6 +22,7 @@ export interface MoltPokerWsClientOptions {
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
   pingInterval?: number;
+  fatalErrorCodes?: ErrorCode[];
 }
 
 export interface MoltPokerWsClientEvents {
@@ -29,6 +33,7 @@ export interface MoltPokerWsClientEvents {
   hand_complete: (payload: HandCompletePayload) => void;
   player_joined: (payload: { seatId: number; agentId: string; agentName: string | null; stack: number }) => void;
   player_left: (payload: { seatId: number; agentId: string }) => void;
+  table_status: (payload: TableStatusPayload) => void;
   connected: () => void;
   disconnected: (code: number, reason: string) => void;
   reconnecting: (attempt: number) => void;
@@ -49,6 +54,7 @@ export class MoltPokerWsClient extends EventEmitter {
   private pingTimer: NodeJS.Timeout | null = null;
   private isConnecting = false;
   private shouldReconnect = true;
+  private fatalErrorCodes: Set<ErrorCode>;
 
   constructor(options: MoltPokerWsClientOptions) {
     super();
@@ -58,6 +64,17 @@ export class MoltPokerWsClient extends EventEmitter {
     this.reconnectInterval = options.reconnectInterval ?? 3000;
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? 10;
     this.pingInterval = options.pingInterval ?? 30000;
+    this.fatalErrorCodes = new Set(
+      options.fatalErrorCodes ?? [
+        ErrorCodes.TABLE_NOT_FOUND,
+        ErrorCodes.TABLE_ENDED,
+        ErrorCodes.INVALID_SESSION,
+        ErrorCodes.SESSION_EXPIRED,
+        ErrorCodes.UNAUTHORIZED,
+        ErrorCodes.INVALID_API_KEY,
+        ErrorCodes.OUTDATED_CLIENT,
+      ]
+    );
   }
 
   /**
@@ -102,6 +119,14 @@ export class MoltPokerWsClient extends EventEmitter {
         this.isConnecting = false;
         this.stopPingTimer();
         this.emit('disconnected', code, reason.toString());
+
+        const normalizedReason = reason.toString().toLowerCase();
+        if (
+          code === 1000 &&
+          (normalizedReason.includes('table ended') || normalizedReason.includes('kicked'))
+        ) {
+          this.shouldReconnect = false;
+        }
 
         if (this.shouldReconnect && this.autoReconnect) {
           this.attemptReconnect();
@@ -188,9 +213,12 @@ export class MoltPokerWsClient extends EventEmitter {
         case 'ack':
           this.emit('ack', envelope.payload as AckPayload);
           break;
-        case 'error':
-          this.emit('error', envelope.payload as ErrorPayload);
+        case 'error': {
+          const payload = envelope.payload as ErrorPayload;
+          this.emit('error', payload);
+          this.handleFatalError(payload);
           break;
+        }
         case 'hand_complete':
           this.emit('hand_complete', envelope.payload as HandCompletePayload);
           break;
@@ -199,6 +227,13 @@ export class MoltPokerWsClient extends EventEmitter {
           break;
         case 'player_left':
           this.emit('player_left', envelope.payload as { seatId: number; agentId: string });
+          break;
+        case 'table_status':
+          const statusPayload = envelope.payload as TableStatusPayload;
+          if (statusPayload.status === 'ended') {
+            this.shouldReconnect = false;
+          }
+          this.emit('table_status', statusPayload);
           break;
         case 'pong':
           // Received pong, connection is alive
@@ -228,6 +263,20 @@ export class MoltPokerWsClient extends EventEmitter {
     if (this.pingTimer) {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
+    }
+  }
+
+  /**
+   * Stop reconnecting on fatal errors
+   */
+  private handleFatalError(payload: ErrorPayload): void {
+    const code = payload.code as ErrorCode;
+    if (!this.fatalErrorCodes.has(code)) return;
+
+    this.shouldReconnect = false;
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.close(1008, payload.message);
     }
   }
 

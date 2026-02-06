@@ -47,11 +47,19 @@ program
   .option('--blinds <blinds>', 'Blinds (small/big)', '1/2')
   .option('--stack <stack>', 'Initial stack', '1000')
   .option('--timeout <ms>', 'Action timeout in ms', '5000')
+  .option('--model <provider:model>', 'LLM model for "llm" agents (e.g. openai:gpt-4.1)')
+  .option('--skill-doc <path>', 'Path to skill.md for LLM agents', 'public/skill.md')
   .option('-v, --verbose', 'Verbose output')
   .action(async (options) => {
     try {
       const blinds = options.blinds.split('/').map(Number);
       const agentTypes = options.types.split(',');
+
+      // Validate LLM requirements
+      if (agentTypes.includes('llm') && !options.model) {
+        console.error('Error: --model is required when using LLM agents (e.g. --model openai:gpt-4.1)');
+        process.exit(1);
+      }
 
       const simulator = new LiveSimulator({
         serverUrl: options.server,
@@ -65,10 +73,13 @@ program
         },
         verbose: options.verbose,
         serviceRoleKey,
+        llmModel: options.model,
+        skillDocPath: options.skillDoc,
       });
 
       console.log('Starting live simulation...');
       console.log(`Agents: ${options.agents} (${options.types})`);
+      if (options.model) console.log(`LLM model: ${options.model}`);
       console.log(`Hands: ${options.hands}`);
       console.log(`Server: ${options.server}`);
 

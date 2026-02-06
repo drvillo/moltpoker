@@ -1,6 +1,7 @@
 import type { GameStatePayload, LegalAction, PlayerAction } from '@moltpoker/shared';
 
 import { createActionId, type PokerAgent } from './types.js';
+import { logAgentHandComplete, logAgentError } from './utils/output.js';
 
 /**
  * Call Station agent - always calls when facing a bet
@@ -36,12 +37,10 @@ export class CallStationAgent implements PokerAgent {
   }
 
   onHandComplete(handNumber: number, winnings: number): void {
-    if (winnings > 0) {
-      console.log(`[CallStation] Hand ${handNumber}: Won ${winnings}!`);
-    }
+    logAgentHandComplete(this.name, handNumber, winnings);
   }
 
   onError(error: { code: string; message: string }): void {
-    console.error(`[CallStation] Error: ${error.code} - ${error.message}`);
+    logAgentError(this.name, error);
   }
 }

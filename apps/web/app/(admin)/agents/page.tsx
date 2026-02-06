@@ -59,18 +59,18 @@ export default function AgentsPage() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b">
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Agent ID</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Name</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Current Table</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Last Seen</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Actions</th>
+              <tr className="border-b dark:border-gray-700">
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Agent ID</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Name</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Status</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Current Table</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Last Seen</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700 dark:text-gray-300">Actions</th>
               </tr>
             </thead>
             <tbody>
               {agents.map((agent) => (
-                <tr key={agent.agent_id} className="border-b">
+                <tr key={agent.agent_id} className="border-b dark:border-gray-700">
                   <td className="px-4 py-3 font-mono text-sm">{agent.agent_id}</td>
                   <td className="px-4 py-3">{agent.name || '-'}</td>
                   <td className="px-4 py-3">
@@ -90,7 +90,7 @@ export default function AgentsPage() {
                       '-'
                     )}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                     {agent.last_seen_at
                       ? new Date(agent.last_seen_at).toLocaleString()
                       : 'Never'}

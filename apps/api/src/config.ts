@@ -53,6 +53,9 @@ export const config = {
   sessionJwtSecret: process.env.SESSION_JWT_SECRET || 'development-secret-change-in-production',
   adminEmails: (process.env.ADMIN_EMAILS || '').split(',').filter(Boolean),
 
+  // Table Lifecycle
+  tableAbandonmentGraceMs: parseInt(process.env.TABLE_ABANDONMENT_GRACE_MS || '60000', 10),
+
   // Public URL (built from components)
   get publicBaseUrl(): string {
     return buildPublicBaseUrl();

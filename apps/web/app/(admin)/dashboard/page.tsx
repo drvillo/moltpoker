@@ -61,20 +61,26 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <h3 className="text-sm font-medium text-gray-500">Total Tables</h3>
+          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Tables</h3>
           <p className="mt-2 text-3xl font-bold">{stats.totalTables}</p>
         </Card>
         <Card>
-          <h3 className="text-sm font-medium text-gray-500">Running Tables</h3>
-          <p className="mt-2 text-3xl font-bold text-green-600">{stats.runningTables}</p>
+          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Running Tables</h3>
+          <p className="mt-2 text-3xl font-bold text-green-600 dark:text-green-400">
+            {stats.runningTables}
+          </p>
         </Card>
         <Card>
-          <h3 className="text-sm font-medium text-gray-500">Waiting Tables</h3>
-          <p className="mt-2 text-3xl font-bold text-yellow-600">{stats.waitingTables}</p>
+          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Waiting Tables</h3>
+          <p className="mt-2 text-3xl font-bold text-yellow-600 dark:text-yellow-400">
+            {stats.waitingTables}
+          </p>
         </Card>
         <Card>
-          <h3 className="text-sm font-medium text-gray-500">Connected Agents</h3>
-          <p className="mt-2 text-3xl font-bold">{stats.connectedAgents} / {stats.totalAgents}</p>
+          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Connected Agents</h3>
+          <p className="mt-2 text-3xl font-bold">
+            {stats.connectedAgents} / {stats.totalAgents}
+          </p>
         </Card>
       </div>
 

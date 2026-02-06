@@ -84,19 +84,19 @@ export default function TablesPage() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b">
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">ID</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Created</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Actions</th>
+              <tr className="border-b dark:border-gray-700">
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">ID</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Status</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Created</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700 dark:text-gray-300">Actions</th>
               </tr>
             </thead>
             <tbody>
               {tables.map((table) => (
-                <tr key={table.id} className="border-b">
+                <tr key={table.id} className="border-b dark:border-gray-700">
                   <td className="px-4 py-3 font-mono text-sm">{table.id}</td>
                   <td className="px-4 py-3">{getStatusBadge(table.status)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                     {new Date(table.created_at).toLocaleString()}
                   </td>
                   <td className="px-4 py-3 text-right">

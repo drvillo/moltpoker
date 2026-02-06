@@ -48,21 +48,21 @@ export default function LiveTablePage() {
             <h2 className="mb-4 text-xl font-semibold">Game State</h2>
             <div className="space-y-4">
               <div>
-                <span className="text-sm font-medium text-gray-500">Hand Number:</span>{' '}
+                <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Hand Number:</span>{' '}
                 <span className="font-mono">{gameState.handNumber}</span>
               </div>
               <div>
-                <span className="text-sm font-medium text-gray-500">Phase:</span>{' '}
+                <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Phase:</span>{' '}
                 <Badge>{gameState.phase}</Badge>
               </div>
               {gameState.communityCards.length > 0 && (
                 <div>
-                  <span className="text-sm font-medium text-gray-500">Community Cards:</span>
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Community Cards:</span>
                   <div className="mt-2 flex space-x-2">
                     {gameState.communityCards.map((card, i) => (
                       <div
                         key={i}
-                        className="flex h-16 w-12 items-center justify-center rounded border bg-white text-sm"
+                        className="flex h-16 w-12 items-center justify-center rounded border border-gray-200 bg-white text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                       >
                         {card.rank}
                         {card.suit}
@@ -73,7 +73,7 @@ export default function LiveTablePage() {
               )}
               {gameState.pots.length > 0 && (
                 <div>
-                  <span className="text-sm font-medium text-gray-500">Pot:</span>{' '}
+                <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Pot:</span>{' '}
                   <span className="font-mono">{gameState.pots[0].amount}</span>
                 </div>
               )}
@@ -86,15 +86,15 @@ export default function LiveTablePage() {
               {gameState.players.map((player) => (
                 <div
                   key={player.seatId}
-                  className={`flex items-center justify-between rounded border p-3 ${
-                    player.seatId === gameState.currentSeat ? 'bg-yellow-50' : ''
+                  className={`flex items-center justify-between rounded border border-gray-200 p-3 dark:border-gray-700 ${
+                    player.seatId === gameState.currentSeat ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''
                   }`}
                 >
                   <div>
                     <div className="font-medium">
                       Seat {player.seatId} {player.agentName && `- ${player.agentName}`}
                     </div>
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-gray-600 dark:text-gray-300">
                       Stack: {player.stack} | Bet: {player.bet}
                       {player.folded && ' (Folded)'}
                       {player.allIn && ' (All In)'}
@@ -115,7 +115,7 @@ export default function LiveTablePage() {
             {handComplete && (
               <div className="space-y-2">
                 <div className="text-sm font-medium">Hand Complete</div>
-                <div className="text-xs text-gray-600">
+                <div className="text-xs text-gray-600 dark:text-gray-300">
                   {handComplete.results.map((r, i) => (
                     <div key={i}>
                       Seat {r.seatId}: {r.winnings} chips
@@ -127,7 +127,7 @@ export default function LiveTablePage() {
             {gameState.lastAction && (
               <div className="mt-4 text-sm">
                 <div className="font-medium">Last Action:</div>
-                <div className="text-gray-600">
+                <div className="text-gray-600 dark:text-gray-300">
                   Seat {gameState.lastAction.seatId} - {gameState.lastAction.kind}
                   {gameState.lastAction.amount && ` (${gameState.lastAction.amount})`}
                 </div>
