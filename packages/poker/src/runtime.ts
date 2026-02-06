@@ -34,6 +34,12 @@ export interface TableRuntimeConfig {
   initialStack: number;
   actionTimeoutMs: number;
   seed?: string;
+  /**
+   * Maximum bets allowed per betting round (street).
+   * Standard poker rule: 4 bets per street (1 opening bet + 3 raises).
+   * Set to null for unlimited raises. Default: 4.
+   */
+  raiseCap?: number | null;
 }
 
 export interface ActionResult {
@@ -55,9 +61,11 @@ export class TableRuntime {
   private handNumber: number = 0;
   private dealerSeat: number = -1;
   private currentSeat: number = -1;
-  private lastRaiseSeat: number = -1;
   private minRaise: number = 0;
   private currentBet: number = 0;
+  private raisesThisStreet: number = 0;
+  /** Seats that still need to act before the betting round can end. */
+  private needToAct: Set<number> = new Set();
   private seq: number = 0;
   private lastAction: { seatId: number; kind: ActionKind; amount?: number } | null = null;
   private processedActionIds: Set<string> = new Set();
@@ -235,10 +243,23 @@ export class TableRuntime {
     this.phase = 'preflop';
     this.currentBet = this.config.blinds.big;
     this.minRaise = this.config.blinds.big;
-    this.lastRaiseSeat = bigBlindSeat;
+    // BB counts as the opening bet (1 of the raiseCap)
+    this.raisesThisStreet = 1;
 
-    // First to act is after big blind
-    this.currentSeat = this.getNextActiveSeat(bigBlindSeat);
+    // First to act is after big blind (skip all-in players from blind posting)
+    const actingPlayers = this.getPlayersWithChips();
+    if (actingPlayers.length === 0) {
+      // All players are all-in from blinds, run out the board immediately
+      this.currentSeat = -1;
+      this.needToAct.clear();
+      this.seq++;
+      this.runOutBoard();
+      return true;
+    }
+
+    // All players with chips need to act preflop (including BB who gets "option")
+    this.needToAct = new Set(actingPlayers.map((p) => p.seatId));
+    this.currentSeat = this.getNextActingSeat(bigBlindSeat);
 
     this.seq++;
     return true;
@@ -321,8 +342,12 @@ export class TableRuntime {
       });
     }
 
-    // Raise if player has enough chips
-    if (player.stack > toCall) {
+    // Raise if player has enough chips and raise cap not reached.
+    // Default: 4 bets per street (1 bet + 3 raises). Set raiseCap to null for unlimited.
+    const raiseCap = this.config.raiseCap === undefined ? 4 : this.config.raiseCap;
+    const capReached = raiseCap !== null && this.raisesThisStreet >= raiseCap;
+
+    if (!capReached && player.stack > toCall) {
       const minRaiseAmount = this.currentBet + this.minRaise;
       const maxRaiseAmount = player.stack + player.bet;
 
@@ -376,10 +401,11 @@ export class TableRuntime {
     switch (action.kind) {
       case 'fold':
         player.folded = true;
+        this.needToAct.delete(seatId);
         break;
 
       case 'check':
-        // Nothing to do
+        this.needToAct.delete(seatId);
         break;
 
       case 'call': {
@@ -387,6 +413,7 @@ export class TableRuntime {
         player.stack -= toCall;
         player.bet += toCall;
         if (player.stack === 0) player.allIn = true;
+        this.needToAct.delete(seatId);
         break;
       }
 
@@ -403,9 +430,16 @@ export class TableRuntime {
         player.stack -= additionalChips;
         player.bet = raiseAmount;
         this.currentBet = raiseAmount;
-        this.lastRaiseSeat = seatId;
+        this.raisesThisStreet++;
 
         if (player.stack === 0) player.allIn = true;
+
+        // After a raise, all other players with chips need to respond
+        this.needToAct = new Set(
+          this.getPlayersWithChips()
+            .filter((p) => p.seatId !== seatId)
+            .map((p) => p.seatId),
+        );
         break;
       }
     }
@@ -426,49 +460,58 @@ export class TableRuntime {
   private advanceGame(): void {
     const activePlayers = this.getActivePlayers();
 
-    // Check if only one player left
+    // Check if only one player left (everyone else folded)
     if (activePlayers.length === 1) {
       this.awardPotToWinner(activePlayers[0]!);
       return;
     }
 
-    // Check if betting round is complete
+    // Check if all remaining players are all-in
     const actingPlayers = this.getPlayersWithChips();
 
-    if (actingPlayers.length <= 1) {
-      // All but one (or zero) players are all-in, run out the board
+    if (actingPlayers.length === 0) {
       this.runOutBoard();
       return;
     }
 
-    // Move to next player
-    const nextSeat = this.getNextActingSeat(this.currentSeat);
-    const isBettingComplete = this.isBettingRoundComplete();
+    // If only one player has chips, they may still need to call
+    if (actingPlayers.length === 1) {
+      const solePlayer = actingPlayers[0]!;
+      if (solePlayer.bet < this.currentBet) {
+        this.currentSeat = solePlayer.seatId;
+        return;
+      }
+      // Everyone else is all-in, sole player has matched -- run out the board
+      this.runOutBoard();
+      return;
+    }
 
-    // Check if we're back to the last raiser (or past it)
-    if (nextSeat === this.lastRaiseSeat || isBettingComplete) {
+    // Clean up needToAct (remove any players who folded or went all-in)
+    for (const seatId of this.needToAct) {
+      const p = this.players.get(seatId);
+      if (!p || p.folded || p.allIn) {
+        this.needToAct.delete(seatId);
+      }
+    }
+
+    // Betting round is complete when no one needs to act
+    if (this.needToAct.size === 0) {
       this.advanceToNextStreet();
     } else {
-      this.currentSeat = nextSeat;
+      this.currentSeat = this.getNextSeatNeedingAction(this.currentSeat);
     }
   }
 
   /**
-   * Check if betting round is complete
+   * Get next seat from needToAct set, in clockwise order after currentSeat
    */
-  private isBettingRoundComplete(): boolean {
-    const actingPlayers = this.getPlayersWithChips();
+  private getNextSeatNeedingAction(currentSeat: number): number {
+    if (this.needToAct.size === 0) return -1;
 
-    // All players have matched the current bet or are all-in
-    for (const player of actingPlayers) {
-      if (player.bet < this.currentBet) {
-        return false;
-      }
-    }
+    const seats = [...this.needToAct].sort((a, b) => a - b);
+    const nextIndex = seats.findIndex((s) => s > currentSeat);
 
-    // Everyone has acted at least once (last raiser has come around)
-    const nextSeat = this.getNextActingSeat(this.currentSeat);
-    return nextSeat === this.lastRaiseSeat;
+    return nextIndex >= 0 ? seats[nextIndex]! : seats[0]!;
   }
 
   /**
@@ -499,8 +542,11 @@ export class TableRuntime {
     // Reset betting for new street
     this.currentBet = 0;
     this.minRaise = this.config.blinds.big;
+    this.raisesThisStreet = 0;
+
+    const actingPlayers = this.getPlayersWithChips();
+    this.needToAct = new Set(actingPlayers.map((p) => p.seatId));
     this.currentSeat = this.getNextActingSeat(this.dealerSeat);
-    this.lastRaiseSeat = this.currentSeat;
     this.seq++;
   }
 
@@ -530,13 +576,17 @@ export class TableRuntime {
    * Collect all bets into the pot(s)
    */
   private collectBets(): void {
-    const activePlayers = this.getActivePlayers();
-    const bets = activePlayers
+    // Include bets from ALL players (folded players' chips still go into the pot)
+    const allPlayers = this.getAllPlayers();
+    const bets = allPlayers
       .filter((p) => p.bet > 0)
       .map((p) => ({ seatId: p.seatId, bet: p.bet }))
       .sort((a, b) => a.bet - b.bet);
 
     if (bets.length === 0) return;
+
+    // Only non-folded active players can win pots
+    const activePlayers = this.getActivePlayers();
 
     // Create side pots if needed
     let previousBet = 0;
@@ -546,7 +596,6 @@ export class TableRuntime {
           (bet - previousBet) * bets.filter((b) => b.bet >= bet).length;
 
         const eligibleSeats = activePlayers
-          .filter((p) => p.bet >= bet || !p.folded)
           .map((p) => p.seatId);
 
         if (potAmount > 0) {
@@ -570,11 +619,11 @@ export class TableRuntime {
 
     // Simplify pots - combine main pot
     if (this.pots.length === 0) {
-      const totalBets = activePlayers.reduce((sum, p) => sum + p.bet, 0);
+      const totalBets = allPlayers.reduce((sum, p) => sum + p.bet, 0);
       if (totalBets > 0) {
         this.pots.push({
           amount: totalBets,
-          eligibleSeats: activePlayers.filter(p => !p.folded).map((p) => p.seatId),
+          eligibleSeats: activePlayers.map((p) => p.seatId),
         });
       }
     }

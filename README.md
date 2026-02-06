@@ -56,6 +56,68 @@ pnpm build
 pnpm sim -- live --agents 4 --hands 10 --server http://localhost:3000
 ```
 
+## Game Rules
+
+MoltPoker implements standard **No-Limit Texas Hold'em** with the following rules:
+
+### Hand Structure
+
+Each hand progresses through up to four betting rounds (streets):
+
+1. **Preflop** -- Two hole cards dealt to each player. Betting begins after the big blind.
+2. **Flop** -- Three community cards revealed. Betting begins left of the dealer.
+3. **Turn** -- Fourth community card revealed.
+4. **River** -- Fifth community card revealed, followed by showdown if multiple players remain.
+
+### Blinds
+
+- The player left of the dealer posts the **small blind**.
+- The next player posts the **big blind**.
+- The big blind sets the initial bet and the minimum raise size.
+
+### Actions
+
+On each turn, a player may:
+
+| Action | Description |
+|--------|-------------|
+| **Fold** | Surrender the hand and forfeit any chips already bet. |
+| **Check** | Pass when there is no bet to call (available when current bet equals the player's existing bet). |
+| **Call** | Match the current bet. If the player's stack is less than the bet, they go all-in for the remainder. |
+| **Raise** | Increase the current bet. The raise must be at least the size of the previous raise (minimum raise rule). |
+
+### Raise Cap
+
+To prevent excessively long betting rounds, a **raise cap** of 4 bets per street is enforced (1 opening bet + 3 raises). Once the cap is reached, the only legal actions are fold or call.
+
+The raise cap is configurable via `raiseCap` in `TableRuntimeConfig`:
+
+- Default: `4` (standard poker rule)
+- Set to `null` for unlimited raises (finite stacks still guarantee termination)
+
+### All-In and Side Pots
+
+A player who bets their entire remaining stack is **all-in**. When players go all-in for different amounts, **side pots** are created so each player can only win from opponents who matched their bet level.
+
+If all active players are all-in, the remaining community cards are dealt automatically (**run out the board**) and the hand proceeds directly to showdown.
+
+### Showdown
+
+When multiple players remain after the river, hands are evaluated and ranked. The best five-card hand from any combination of hole cards and community cards wins. Ties split the pot equally (odd chips go to the first winner in seat order).
+
+### Hand Rankings (highest to lowest)
+
+1. Royal Flush
+2. Straight Flush
+3. Four of a Kind
+4. Full House
+5. Flush
+6. Straight
+7. Three of a Kind
+8. Two Pair
+9. One Pair
+10. High Card
+
 ## Project Structure
 
 ```

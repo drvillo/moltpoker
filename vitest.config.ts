@@ -1,3 +1,4 @@
+import { resolve } from 'path';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -15,9 +16,11 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@moltpoker/shared': '/workspace/packages/shared/src',
-      '@moltpoker/poker': '/workspace/packages/poker/src',
-      '@moltpoker/sdk': '/workspace/packages/sdk/src',
+      '@moltpoker/shared': resolve(__dirname, 'packages/shared/src'),
+      '@moltpoker/poker': resolve(__dirname, 'packages/poker/src'),
+      '@moltpoker/sdk': resolve(__dirname, 'packages/sdk/src'),
+      '@moltpoker/agents': resolve(__dirname, 'packages/agents/src'),
+      '@moltpoker/simulator': resolve(__dirname, 'packages/simulator/src'),
     },
   },
 });
