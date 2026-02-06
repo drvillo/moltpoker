@@ -129,6 +129,17 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
         // Update status
         await db.updateTableStatus(tableId, 'running');
 
+        // Log player joined events
+        for (const seat of seatedPlayers) {
+          const agentName = seat.agents?.name ?? null;
+          await managedTable.eventLogger.log('PLAYER_JOINED', {
+            seatId: seat.seat_id,
+            agentId: seat.agent_id,
+            agentName,
+            stack: seat.stack,
+          });
+        }
+
         // Log table started event
         await managedTable.eventLogger.log('TABLE_STARTED', {
           config: {

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { adminApi } from '@/lib/api';
+import { buildReplayData, type FinalStanding } from '@/lib/replayState';
 
 interface TableDetail {
   id: string;
@@ -31,6 +32,8 @@ export default function TableDetailPage() {
   const [table, setTable] = useState<TableDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [finalStacks, setFinalStacks] = useState<FinalStanding[] | null>(null);
+  const [finalStandingsLoading, setFinalStandingsLoading] = useState(false);
 
   const loadTable = useCallback(async () => {
     try {
@@ -48,6 +51,31 @@ export default function TableDetailPage() {
     const interval = setInterval(loadTable, 5000);
     return () => clearInterval(interval);
   }, [loadTable]);
+
+  useEffect(() => {
+    if (!table || table.status !== 'ended') {
+      setFinalStacks(null);
+      return;
+    }
+    let cancelled = false;
+    async function loadFinalStandings() {
+      setFinalStandingsLoading(true);
+      try {
+        const { events } = await adminApi.getTableEvents(tableId, { limit: 10000 });
+        const data = buildReplayData(tableId, events);
+        if (!cancelled) setFinalStacks(data.finalStacks);
+      } catch (err) {
+        console.error('Failed to load final standings:', err);
+        if (!cancelled) setFinalStacks([]);
+      } finally {
+        if (!cancelled) setFinalStandingsLoading(false);
+      }
+    }
+    loadFinalStandings();
+    return () => {
+      cancelled = true;
+    };
+  }, [tableId, table?.status]);
 
   async function handleStart() {
     setActionLoading(true);
@@ -159,30 +187,61 @@ export default function TableDetailPage() {
         </Card>
 
         <Card>
-          <h2 className="mb-4 text-xl font-semibold">Seats</h2>
-          <div className="space-y-2">
-            {table.seats.map((seat) => (
-              <div
-                key={seat.seat_id}
-                className="flex items-center justify-between rounded border p-3"
-              >
-                <div>
-                  <div className="font-medium">Seat {seat.seat_id}</div>
-                  <div className="text-sm text-gray-600">
-                    {seat.agent_name || seat.agent_id || 'Empty'}
+          <h2 className="mb-4 text-xl font-semibold">Final Standings</h2>
+          {table.status !== 'ended' && (
+            <p className="text-sm text-gray-500">
+              Final standings will appear when the game ends.
+            </p>
+          )}
+          {table.status === 'ended' && finalStandingsLoading && (
+            <p className="text-sm text-gray-500">Loading final standings...</p>
+          )}
+          {table.status === 'ended' && !finalStandingsLoading && (!finalStacks || finalStacks.length === 0) && (
+            <p className="text-sm text-gray-500">No final standings.</p>
+          )}
+          {table.status === 'ended' && !finalStandingsLoading && finalStacks && finalStacks.length > 0 && (
+            <div className="space-y-2">
+              {finalStacks.map((standing, i) => {
+                const agentName =
+                  standing.agentName ??
+                  table.seats.find((s) => s.seat_id === standing.seatId)?.agent_name ??
+                  table.seats.find((s) => s.agent_id === standing.agentId)?.agent_name ??
+                  null;
+                return (
+                  <div
+                    key={standing.seatId}
+                    className={`flex items-center justify-between p-2 rounded ${
+                      i === 0 ? 'bg-yellow-50 border border-yellow-200' : ''
+                    }`}
+                  >
+                    <div>
+                      <span className="font-medium">
+                        {i + 1}. Seat {standing.seatId}
+                      </span>
+                      {agentName && (
+                        <div className="text-sm text-gray-600">{agentName}</div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="font-mono">{standing.stack}</div>
+                      <div
+                        className={`text-xs ${
+                          standing.netChange > 0
+                            ? 'text-green-600'
+                            : standing.netChange < 0
+                              ? 'text-red-600'
+                              : 'text-gray-500'
+                        }`}
+                      >
+                        {standing.netChange > 0 ? '+' : ''}
+                        {standing.netChange}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-medium">Stack: {seat.stack}</div>
-                  {seat.connected && (
-                    <Badge variant="success" className="mt-1">
-                      Connected
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </Card>
       </div>
 

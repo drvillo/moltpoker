@@ -276,44 +276,6 @@ export function ReplayViewer({ tableId }: ReplayViewerProps) {
               </div>
             )}
           </Card>
-
-          {/* Final Standings - shown at end */}
-          {isAtEnd && replayData.finalStacks.length > 0 && (
-            <Card className="mt-6">
-              <h2 className="mb-4 text-xl font-semibold">Final Standings</h2>
-              <div className="space-y-2">
-                {replayData.finalStacks.map((standing, i) => (
-                  <div
-                    key={standing.seatId}
-                    className={`flex items-center justify-between p-2 rounded ${
-                      i === 0 ? 'bg-yellow-50 border border-yellow-200' : ''
-                    }`}
-                  >
-                    <div>
-                      <span className="font-medium">
-                        {i + 1}. {standing.agentName || `Seat ${standing.seatId}`}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-mono">{standing.stack}</div>
-                      <div
-                        className={`text-xs ${
-                          standing.netChange > 0
-                            ? 'text-green-600'
-                            : standing.netChange < 0
-                            ? 'text-red-600'
-                            : 'text-gray-500'
-                        }`}
-                      >
-                        {standing.netChange > 0 ? '+' : ''}
-                        {standing.netChange}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
         </div>
       </div>
 
