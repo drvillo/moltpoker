@@ -168,9 +168,13 @@ async function runAgent(options: {
     sessionToken: joinResponse.session_token,
   });
 
+  const MAX_ACTION_RETRIES = 2;
+
   let currentState: GameStatePayload | null = null;
   let mySeatId = joinResponse.seat_id;
   let isShuttingDown = false;
+  let retryCount = 0;
+  let pendingRetryState: { state: GameStatePayload; legalActions: NonNullable<GameStatePayload['legalActions']> } | null = null;
 
   async function shutdown(reason: string): Promise<void> {
     if (isShuttingDown) return;
@@ -205,6 +209,30 @@ async function runAgent(options: {
     mySeatId = payload.seat_id;
   });
 
+  // Retry-aware turn handler: gets an action from the agent and sends it
+  async function handleTurn(state: GameStatePayload, legalActions: NonNullable<GameStatePayload['legalActions']>, previousError?: string): Promise<void> {
+    try {
+      const action = await agent.getAction(state, legalActions, previousError);
+      console.log(formatChosenAction(action));
+      pendingRetryState = { state, legalActions };
+      safeSendAction(action, state.seq);
+    } catch (err) {
+      // LLM call itself failed -- count as a retry attempt
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[${agent.name}] Action call failed:`, errorMsg);
+
+      retryCount++;
+      if (retryCount <= MAX_ACTION_RETRIES) {
+        console.log(`Retrying action (attempt ${retryCount}/${MAX_ACTION_RETRIES})...`);
+        await handleTurn(state, legalActions, `Agent call failed: ${errorMsg}`);
+      } else {
+        // Max retries exhausted -- let server timeout handle it (check/fold)
+        console.error(`Max retries (${MAX_ACTION_RETRIES}) exhausted. Server timeout will apply default.`);
+        pendingRetryState = null;
+      }
+    }
+  }
+
   // Handle game state
   ws.on('game_state', async (state) => {
     currentState = state;
@@ -222,16 +250,9 @@ async function runAgent(options: {
     // Check if it's our turn
     if (state.currentSeat === mySeatId && state.legalActions && state.legalActions.length > 0) {
       console.log(formatLegalActionsLine(state.legalActions));
-
-      try {
-        const action = await agent.getAction(state, state.legalActions);
-        console.log(formatChosenAction(action));
-        safeSendAction(action, state.seq);
-      } catch (err) {
-        console.error('Error getting action:', err);
-        // Default to fold
-        safeSendAction({ action_id: crypto.randomUUID(), kind: 'fold' }, state.seq);
-      }
+      retryCount = 0;
+      pendingRetryState = null;
+      await handleTurn(state, state.legalActions);
     }
   });
 
@@ -240,10 +261,22 @@ async function runAgent(options: {
     console.log(`Action ${payload.action_id} acknowledged (seq: ${payload.seq})`);
   });
 
-  // Handle errors
+  // Handle errors -- retry on INVALID_ACTION if retries remain
   ws.on('error', (error) => {
     console.error(`Error: ${error.code} - ${error.message}`);
     agent.onError?.(error);
+
+    if (error.code === 'INVALID_ACTION' && pendingRetryState && retryCount < MAX_ACTION_RETRIES) {
+      retryCount++;
+      console.log(`Retrying action (attempt ${retryCount}/${MAX_ACTION_RETRIES})...`);
+      const { state, legalActions } = pendingRetryState;
+      handleTurn(state, legalActions, error.message).catch((err) => {
+        console.error('Retry failed:', err);
+      });
+    } else if (error.code === 'INVALID_ACTION' && retryCount >= MAX_ACTION_RETRIES) {
+      pendingRetryState = null;
+      console.error(`Max retries (${MAX_ACTION_RETRIES}) exhausted. Server timeout will apply default.`);
+    }
   });
 
   // Handle hand complete

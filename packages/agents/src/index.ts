@@ -7,7 +7,7 @@ export { TightAgent } from './tight.js';
 export { CallStationAgent } from './callStation.js';
 
 // LLM agent
-export { LlmAgent, type LlmAgentConfig, formatGameState, validateAndBuildAction } from './llm.js';
+export { LlmAgent, type LlmAgentConfig, formatGameState } from './llm.js';
 
 // Output formatting utilities
 export {

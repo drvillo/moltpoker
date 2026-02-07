@@ -8,8 +8,9 @@ export interface PokerAgent {
   name: string;
 
   /** Called when the agent receives a game state and needs to act.
-   *  May return a Promise for async agents (e.g. LLM-backed). */
-  getAction(state: GameStatePayload, legalActions: LegalAction[]): PlayerAction | Promise<PlayerAction>;
+   *  May return a Promise for async agents (e.g. LLM-backed).
+   *  @param previousError - If provided, the reason the previous action was rejected (for retry). */
+  getAction(state: GameStatePayload, legalActions: LegalAction[], previousError?: string): PlayerAction | Promise<PlayerAction>;
 
   /** Called when a hand completes (optional) */
   onHandComplete?(handNumber: number, winnings: number): void;

@@ -140,6 +140,88 @@ describe('TableRuntime', () => {
     });
   });
 
+  describe('forceFold', () => {
+    beforeEach(() => {
+      runtime.addPlayer(0, 'agent-1', 'Agent 1');
+      runtime.addPlayer(1, 'agent-2', 'Agent 2');
+      runtime.startHand();
+    });
+
+    it('should fold the current player and advance the game', () => {
+      const currentSeat = runtime.getCurrentSeat();
+      const result = runtime.forceFold(currentSeat);
+
+      expect(result.success).toBe(true);
+
+      const player = runtime.getPlayer(currentSeat);
+      expect(player?.folded).toBe(true);
+    });
+
+    it('should end the hand when the last non-folded player remains', () => {
+      // With 2 players, force-folding one should end the hand
+      const currentSeat = runtime.getCurrentSeat();
+      runtime.forceFold(currentSeat);
+
+      expect(runtime.isHandComplete()).toBe(true);
+    });
+
+    it('should award pot to the remaining player', () => {
+      const currentSeat = runtime.getCurrentSeat();
+      const otherSeat = currentSeat === 0 ? 1 : 0;
+
+      const stackBefore = runtime.getPlayer(otherSeat)!.stack + runtime.getPlayer(otherSeat)!.bet;
+      const foldedPlayerBet = runtime.getPlayer(currentSeat)!.bet;
+
+      runtime.forceFold(currentSeat);
+
+      // The remaining player should have won the pot (both blinds)
+      const otherPlayer = runtime.getPlayer(otherSeat)!;
+      expect(otherPlayer.stack).toBeGreaterThan(stackBefore - foldedPlayerBet);
+    });
+
+    it('should succeed for a non-current player (marks as folded)', () => {
+      const currentSeat = runtime.getCurrentSeat();
+      const otherSeat = currentSeat === 0 ? 1 : 0;
+
+      const result = runtime.forceFold(otherSeat);
+      expect(result.success).toBe(true);
+
+      const player = runtime.getPlayer(otherSeat);
+      expect(player?.folded).toBe(true);
+    });
+
+    it('should return success when player is already folded', () => {
+      const currentSeat = runtime.getCurrentSeat();
+      runtime.forceFold(currentSeat);
+
+      // Force-fold again -- should be a no-op
+      const result = runtime.forceFold(currentSeat);
+      expect(result.success).toBe(true);
+    });
+
+    it('should return error for non-existent player', () => {
+      const result = runtime.forceFold(8); // seat 8 doesn't exist
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('INVALID_ACTION');
+    });
+
+    it('should work in a 3-player game without ending the hand', () => {
+      // Set up a 3-player game
+      const rt = new TableRuntime({ ...config, seed: 'forcefold-3p' });
+      rt.addPlayer(0, 'agent-1', 'Agent 1');
+      rt.addPlayer(1, 'agent-2', 'Agent 2');
+      rt.addPlayer(2, 'agent-3', 'Agent 3');
+      rt.startHand();
+
+      const currentSeat = rt.getCurrentSeat();
+      rt.forceFold(currentSeat);
+
+      // Hand should still be in progress with 2 active players
+      expect(rt.isHandInProgress()).toBe(true);
+      expect(rt.getActivePlayers().length).toBe(2);
+    });
+  });
+
   describe('determinism', () => {
     it('should produce identical results with same seed', () => {
       // First runtime

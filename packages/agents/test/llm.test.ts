@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { MockLanguageModelV3 } from 'ai/test'
 import { writeFileSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { GameStatePayload, LegalAction } from '@moltpoker/shared'
 
-import { LlmAgent, formatGameState, validateAndBuildAction } from '../src/llm.js'
+import { LlmAgent, formatGameState } from '../src/llm.js'
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -140,78 +140,99 @@ describe('formatGameState', () => {
   })
 })
 
-// ─── Tests: validateAndBuildAction ───────────────────────────────────────────
+// ─── Tests: raw action passthrough (no client-side validation) ──────────────
 
-describe('validateAndBuildAction', () => {
-  it('should return fold when LLM chooses fold', () => {
-    const action = validateAndBuildAction(
-      { reasoning: 'weak hand', kind: 'fold' },
-      defaultLegalActions,
-    )
-    expect(action.kind).toBe('fold')
-    expect(action.action_id).toBeDefined()
+describe('LlmAgent action passthrough', () => {
+  let tmpDir: string
+  let skillDocPath: string
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'moltpoker-passthrough-'))
+    skillDocPath = join(tmpDir, 'skill.md')
+    writeFileSync(skillDocPath, '# Test Skill Doc\nYou are a poker agent.')
   })
 
-  it('should return call when LLM chooses call', () => {
-    const action = validateAndBuildAction(
-      { reasoning: 'decent odds', kind: 'call' },
-      defaultLegalActions,
-    )
-    expect(action.kind).toBe('call')
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('should return raiseTo with clamped amount', () => {
-    const action = validateAndBuildAction(
-      { reasoning: 'strong hand', kind: 'raiseTo', amount: 200 },
-      defaultLegalActions,
-    )
+  it('should pass through raiseTo amount without clamping (above max)', async () => {
+    const agent = new LlmAgent({
+      model: mockModel({ reasoning: 'all in', kind: 'raiseTo', amount: 9999 }),
+      skillDocPath,
+    })
+    const action = await agent.getAction(makeGameState(), defaultLegalActions)
+
     expect(action.kind).toBe('raiseTo')
-    expect(action.amount).toBe(200)
+    expect(action.amount).toBe(9999) // NOT clamped -- server validates
   })
 
-  it('should clamp raiseTo amount to min when below range', () => {
-    const action = validateAndBuildAction(
-      { reasoning: 'raise small', kind: 'raiseTo', amount: 10 },
-      defaultLegalActions,
-    )
+  it('should pass through raiseTo amount without clamping (below min)', async () => {
+    const agent = new LlmAgent({
+      model: mockModel({ reasoning: 'tiny raise', kind: 'raiseTo', amount: 5 }),
+      skillDocPath,
+    })
+    const action = await agent.getAction(makeGameState(), defaultLegalActions)
+
     expect(action.kind).toBe('raiseTo')
-    expect(action.amount).toBe(50) // clamped to minAmount
+    expect(action.amount).toBe(5) // NOT clamped -- server validates
   })
 
-  it('should clamp raiseTo amount to max when above range', () => {
-    const action = validateAndBuildAction(
-      { reasoning: 'all in', kind: 'raiseTo', amount: 9999 },
-      defaultLegalActions,
-    )
-    expect(action.kind).toBe('raiseTo')
-    expect(action.amount).toBe(925) // clamped to maxAmount
+  it('should pass through illegal action kind without fallback', async () => {
+    const agent = new LlmAgent({
+      model: mockModel({ reasoning: 'check please', kind: 'check' }),
+      skillDocPath,
+    })
+
+    // Legal actions don't include check -- agent sends it anyway, server rejects
+    const legalActions: LegalAction[] = [{ kind: 'fold' }, { kind: 'call' }]
+    const action = await agent.getAction(makeGameState({ legalActions }), legalActions)
+
+    expect(action.kind).toBe('check') // Raw passthrough, no fallback
   })
 
-  it('should default raiseTo to minAmount when no amount provided', () => {
-    const action = validateAndBuildAction(
-      { reasoning: 'raise', kind: 'raiseTo' },
-      defaultLegalActions,
-    )
-    expect(action.kind).toBe('raiseTo')
-    expect(action.amount).toBe(50)
+  it('should throw on LLM API failure instead of returning fallback', async () => {
+    const errorModel = new MockLanguageModelV3({
+      doGenerate: async () => {
+        throw new Error('API rate limit exceeded')
+      },
+    })
+
+    const agent = new LlmAgent({ model: errorModel, skillDocPath })
+    await expect(
+      agent.getAction(makeGameState(), defaultLegalActions),
+    ).rejects.toThrow('API rate limit exceeded')
   })
 
-  it('should fallback to check when LLM picks an illegal action and check is available', () => {
-    const actions: LegalAction[] = [{ kind: 'check' }, { kind: 'raiseTo', minAmount: 4, maxAmount: 1000 }]
-    const action = validateAndBuildAction(
-      { reasoning: 'call', kind: 'call' }, // call is not legal here
-      actions,
-    )
-    expect(action.kind).toBe('check')
-  })
+  it('should include previousError in the prompt on retry', async () => {
+    let capturedPrompt = ''
+    const capturingModel = new MockLanguageModelV3({
+      doGenerate: async (opts) => {
+        // Capture the user prompt
+        for (const msg of opts.prompt) {
+          if (msg.role === 'user') {
+            for (const part of msg.content) {
+              if (part.type === 'text') capturedPrompt = part.text
+            }
+          }
+        }
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ reasoning: 'ok', kind: 'fold', amount: null }) }],
+          finishReason: { unified: 'stop' as const, raw: undefined },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+            outputTokens: { total: 20, text: 20, reasoning: undefined },
+          },
+          warnings: [],
+        }
+      },
+    })
 
-  it('should fallback to fold when LLM picks an illegal action and no check available', () => {
-    const actions: LegalAction[] = [{ kind: 'fold' }, { kind: 'call' }]
-    const action = validateAndBuildAction(
-      { reasoning: 'check', kind: 'check' }, // check is not legal here
-      actions,
-    )
-    expect(action.kind).toBe('fold')
+    const agent = new LlmAgent({ model: capturingModel, skillDocPath })
+    await agent.getAction(makeGameState(), defaultLegalActions, 'Raise amount cannot exceed 925')
+
+    expect(capturedPrompt).toContain('[RETRY]')
+    expect(capturedPrompt).toContain('Raise amount cannot exceed 925')
   })
 })
 
@@ -300,22 +321,21 @@ describe('LlmAgent', () => {
     expect(action.amount).toBe(200)
   })
 
-  it('should fallback to check/fold when LLM returns illegal action', async () => {
+  it('should pass through illegal action kind (server validates)', async () => {
     const agent = new LlmAgent({
       model: mockModel({ reasoning: 'check please', kind: 'check' }),
       skillDocPath,
     })
 
-    // Legal actions don't include check
+    // Legal actions don't include check -- raw passthrough, server rejects
     const legalActions: LegalAction[] = [{ kind: 'fold' }, { kind: 'call' }]
     const state = makeGameState({ legalActions })
     const action = await agent.getAction(state, legalActions)
 
-    // No check available, should fold
-    expect(action.kind).toBe('fold')
+    expect(action.kind).toBe('check')
   })
 
-  it('should fallback to check when LLM errors and check is available', async () => {
+  it('should throw on LLM API failure (caller handles retry)', async () => {
     const errorModel = new MockLanguageModelV3({
       doGenerate: async () => {
         throw new Error('API rate limit exceeded')
@@ -325,24 +345,8 @@ describe('LlmAgent', () => {
     const agent = new LlmAgent({ model: errorModel, skillDocPath })
     const legalActions: LegalAction[] = [{ kind: 'check' }, { kind: 'raiseTo', minAmount: 4, maxAmount: 1000 }]
     const state = makeGameState({ legalActions })
-    const action = await agent.getAction(state, legalActions)
 
-    expect(action.kind).toBe('check')
-  })
-
-  it('should fallback to fold when LLM errors and no check available', async () => {
-    const errorModel = new MockLanguageModelV3({
-      doGenerate: async () => {
-        throw new Error('Network timeout')
-      },
-    })
-
-    const agent = new LlmAgent({ model: errorModel, skillDocPath })
-    const legalActions: LegalAction[] = [{ kind: 'fold' }, { kind: 'call' }]
-    const state = makeGameState({ legalActions })
-    const action = await agent.getAction(state, legalActions)
-
-    expect(action.kind).toBe('fold')
+    await expect(agent.getAction(state, legalActions)).rejects.toThrow('API rate limit exceeded')
   })
 
   // Cleanup

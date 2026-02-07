@@ -87,33 +87,14 @@ export function formatGameState(state: GameStatePayload, legalActions: LegalActi
   return lines.join('\n')
 }
 
-// ─── Action Validation ───────────────────────────────────────────────────────
+// ─── Decision → PlayerAction ─────────────────────────────────────────────────
 
-/**
- * Validate the LLM's decision against legal actions and produce a valid PlayerAction.
- * Falls back to check/fold if the LLM picks an illegal action (Safety Defaults from skill.md).
- */
-export function validateAndBuildAction(
-  decision: PokerDecision,
-  legalActions: LegalAction[],
-): PlayerAction {
-  const chosen = legalActions.find((a) => a.kind === decision.kind)
-
-  if (chosen) {
-    if (chosen.kind === 'raiseTo') {
-      // Clamp amount to legal range
-      const min = chosen.minAmount ?? 0
-      const max = chosen.maxAmount ?? min
-      const amount = Math.max(min, Math.min(max, decision.amount ?? min))
-      return { action_id: createActionId(), kind: 'raiseTo', amount }
-    }
-    return { action_id: createActionId(), kind: chosen.kind }
-  }
-
-  // LLM chose an illegal action -- apply Safety Defaults: check if possible, else fold
-  const canCheck = legalActions.some((a) => a.kind === 'check')
-  if (canCheck) return { action_id: createActionId(), kind: 'check' }
-  return { action_id: createActionId(), kind: 'fold' }
+/** Convert a raw LLM decision into a PlayerAction (no validation/clamping). */
+function buildAction(decision: PokerDecision): PlayerAction {
+  const base = { action_id: createActionId(), kind: decision.kind }
+  if (decision.kind === 'raiseTo' && decision.amount !== null)
+    return { ...base, kind: 'raiseTo', amount: decision.amount }
+  return base
 }
 
 // ─── Agent ───────────────────────────────────────────────────────────────────
@@ -165,8 +146,14 @@ export class LlmAgent implements PokerAgent {
   async getAction(
     state: GameStatePayload,
     legalActions: LegalAction[],
+    previousError?: string,
   ): Promise<PlayerAction> {
-    const prompt = formatGameState(state, legalActions)
+    let prompt = formatGameState(state, legalActions)
+
+    if (previousError) {
+      prompt += `\n\n[RETRY] Your previous action was rejected: ${previousError}\nPlease choose a valid action from the legal actions listed above.`
+    }
+
     const logCtx = {
       handNumber: state.handNumber,
       phase: state.phase,
@@ -179,47 +166,28 @@ export class LlmAgent implements PokerAgent {
       timestamp: new Date().toISOString(),
       ...logCtx,
       prompt,
+      isRetry: !!previousError,
     })
 
-    try {
-      const { object } = await generateObject({
-        model: this.model,
-        schema: PokerDecisionSchema,
-        system: this.systemPrompt,
-        prompt,
-        temperature: this.temperature,
-      })
+    const { object } = await generateObject({
+      model: this.model,
+      schema: PokerDecisionSchema,
+      system: this.systemPrompt,
+      prompt,
+      temperature: this.temperature,
+    })
 
-      const action = validateAndBuildAction(object, legalActions)
+    const action = buildAction(object)
 
-      this.appendLog({
-        event: 'llm_response',
-        timestamp: new Date().toISOString(),
-        ...logCtx,
-        response: object,
-        action,
-      })
+    this.appendLog({
+      event: 'llm_response',
+      timestamp: new Date().toISOString(),
+      ...logCtx,
+      response: object,
+      action,
+    })
 
-      return action
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.error(`[${this.name}] LLM call failed:`, err)
-      // Safety default: check if possible, else fold
-      const canCheck = legalActions.some((a) => a.kind === 'check')
-      const fallbackAction = canCheck
-        ? { action_id: createActionId(), kind: 'check' as const }
-        : { action_id: createActionId(), kind: 'fold' as const }
-
-      this.appendLog({
-        event: 'llm_error',
-        timestamp: new Date().toISOString(),
-        ...logCtx,
-        error: message,
-        fallbackAction,
-      })
-
-      return fallbackAction
-    }
+    return action
   }
 
   onHandComplete(handNumber: number, winnings: number): void {

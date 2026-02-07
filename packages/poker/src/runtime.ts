@@ -12,6 +12,7 @@ import type {
 
 import { createDeck, shuffleDeck } from './deck.js';
 import { compareHands, evaluateHand, type HandEvaluation } from './handEvaluator.js';
+import { validateAction } from './validation.js';
 
 export type Phase = 'waiting' | 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'ended';
 
@@ -365,37 +366,16 @@ export class TableRuntime {
    * Apply a player action
    */
   applyAction(seatId: number, action: PlayerAction): ActionResult {
-    // Check idempotency
+    // Check idempotency (application concern, not a poker rule)
     if (this.processedActionIds.has(action.action_id)) {
       return { success: true }; // Already processed
     }
 
-    // Validate it's this player's turn
-    if (this.currentSeat !== seatId) {
-      return { success: false, error: 'Not your turn', errorCode: 'NOT_YOUR_TURN' };
-    }
+    // Delegate all poker-rule validation to the single source of truth
+    const validation = validateAction(this, seatId, action);
+    if (!validation.success) return validation;
 
-    const player = this.players.get(seatId);
-    if (!player || player.folded || player.allIn) {
-      return { success: false, error: 'Cannot act', errorCode: 'INVALID_ACTION' };
-    }
-
-    const legalActions = this.getLegalActions(seatId);
-    const isLegal = legalActions.some((la) => {
-      if (la.kind !== action.kind) return false;
-      if (action.kind === 'raiseTo') {
-        const amount = action.amount ?? 0;
-        return (
-          amount >= (la.minAmount ?? 0) &&
-          amount <= (la.maxAmount ?? Infinity)
-        );
-      }
-      return true;
-    });
-
-    if (!isLegal) {
-      return { success: false, error: 'Illegal action', errorCode: 'INVALID_ACTION' };
-    }
+    const player = this.players.get(seatId)!;
 
     // Apply the action
     switch (action.kind) {
@@ -450,6 +430,35 @@ export class TableRuntime {
 
     // Advance game state
     this.advanceGame();
+
+    return { success: true };
+  }
+
+  /**
+   * Force-fold a player (e.g. kicked due to repeated illegal actions).
+   * Bypasses normal validation -- directly folds the player and advances the game.
+   * Safe because folding never corrupts state: advanceGame() handles the "only
+   * one player left" case and awards the pot correctly.
+   */
+  forceFold(seatId: number): ActionResult {
+    const player = this.players.get(seatId);
+    if (!player) {
+      return { success: false, error: 'Player not found', errorCode: 'INVALID_ACTION' };
+    }
+
+    if (player.folded) {
+      return { success: true }; // Already folded, nothing to do
+    }
+
+    player.folded = true;
+    this.needToAct.delete(seatId);
+
+    // If this was the current player to act, advance the game
+    if (this.currentSeat === seatId) {
+      this.lastAction = { seatId, kind: 'fold' };
+      this.seq++;
+      this.advanceGame();
+    }
 
     return { success: true };
   }
