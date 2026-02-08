@@ -7,11 +7,21 @@ import { Card } from '@/components/ui/Card';
 import { useTableWebSocket } from '@/hooks/useTableWebSocket';
 
 export default function LiveTablePage() {
-  const params = useParams();
-  const tableId = params.tableId as string;
+  const params = useParams()
+  const tableId = Array.isArray(params?.tableId) ? params?.tableId[0] : params?.tableId
   const { connected, gameState, handComplete, error } = useTableWebSocket(tableId, {
     mode: 'observer',
-  });
+  })
+
+  if (!tableId) {
+    return (
+      <div className="p-8">
+        <Card>
+          <div className="text-center text-red-600">Missing table id.</div>
+        </Card>
+      </div>
+    )
+  }
 
   if (error) {
     return (
@@ -20,7 +30,7 @@ export default function LiveTablePage() {
           <div className="text-center text-red-600">Error: {error}</div>
         </Card>
       </div>
-    );
+    )
   }
 
   if (!connected || !gameState) {
@@ -30,7 +40,7 @@ export default function LiveTablePage() {
           <div className="text-center">Connecting...</div>
         </Card>
       </div>
-    );
+    )
   }
 
   return (
@@ -137,5 +147,5 @@ export default function LiveTablePage() {
         </div>
       </div>
     </div>
-  );
+  )
 }

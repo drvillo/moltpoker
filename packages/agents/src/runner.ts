@@ -8,6 +8,8 @@ import { config as loadEnv } from 'dotenv';
 import { existsSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 
+import { AutonomousAgent } from './autonomous.js';
+import type { StepEvent } from './autonomous.js';
 import { CallStationAgent } from './callStation.js';
 import { LlmAgent } from './llm.js';
 import { RandomAgent } from './random.js';
@@ -93,6 +95,272 @@ async function createAgent(
   }
 }
 
+// ─── Poker Display Formatter (for autonomous agent) ──────────────────────────
+
+function safeParseJson(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'string') return null
+  try { return JSON.parse(value) as Record<string, unknown> } catch { return null }
+}
+
+/**
+ * Normalise a card value that may be either a compact string ("Qs") or
+ * a full Card object ({rank:"Q",suit:"s"}) into a Card object.
+ */
+function normalizeCard(c: unknown): { rank: string; suit: string } {
+  if (typeof c === 'string' && c.length >= 2)
+    return { rank: c[0]!, suit: c[1]! }
+  if (c && typeof c === 'object' && 'rank' in (c as Record<string, unknown>))
+    return c as { rank: string; suit: string }
+  return { rank: '?', suit: '?' }
+}
+
+function normalizeCards(arr: unknown): Array<{ rank: string; suit: string }> {
+  if (!Array.isArray(arr)) return []
+  return arr.map(normalizeCard)
+}
+
+/**
+ * Normalise legal actions from either human format ({kind, minAmount, maxAmount})
+ * or compact format ({kind, min, max}) into the shape expected by formatLegalActionsLine.
+ */
+function normalizeLegalActions(arr: unknown): Array<{ kind: string; minAmount?: number; maxAmount?: number }> {
+  if (!Array.isArray(arr)) return []
+  return arr.map((a: Record<string, unknown>) => {
+    const out: { kind: string; minAmount?: number; maxAmount?: number } = { kind: a.kind as string }
+    if (a.minAmount !== undefined) out.minAmount = a.minAmount as number
+    else if (a.min !== undefined) out.minAmount = a.min as number
+    if (a.maxAmount !== undefined) out.maxAmount = a.maxAmount as number
+    else if (a.max !== undefined) out.maxAmount = a.max as number
+    return out
+  })
+}
+
+/**
+ * Creates an onStep callback that formats autonomous agent tool results
+ * using the same shared output utilities as the LLM / scripted agents.
+ * The agent itself stays domain-agnostic; all MoltPoker-specific
+ * interpretation lives here in the runner.
+ *
+ * Handles both the verbose (human) and compact (agent) WebSocket formats.
+ */
+function createPokerDisplayFormatter(agentName: string): (step: StepEvent) => void {
+  let mySeatId = -1
+
+  function handleWsMessage(msg: Record<string, unknown>): void {
+    if (!msg || typeof msg !== 'object') return
+    const msgRecord = msg as Record<string, unknown>
+    // Human format wraps data in `payload`; compact format is flat.
+    const payload = (msgRecord.payload as Record<string, unknown> | undefined) ?? msgRecord
+
+    switch (msgRecord.type) {
+      case 'welcome':
+        // Human: payload.seat_id, payload.action_timeout_ms | Compact: seat, timeout
+        mySeatId = (payload.seat_id ?? payload.seat ?? -1) as number
+        console.log(`Connected! Seat: ${mySeatId}, Timeout: ${payload.action_timeout_ms ?? payload.timeout}ms`)
+        break
+
+      case 'game_state': {
+        // Pot: human has pots array, compact has pot number
+        const totalPot = typeof payload.pot === 'number'
+          ? payload.pot as number
+          : ((payload.pots as Array<{ amount: number }>) ?? []).reduce((sum, p) => sum + p.amount, 0)
+
+        // Hand number: human=handNumber, compact=hand
+        const handNumber = (payload.handNumber ?? payload.hand_number ?? payload.hand) as number
+        const phase = (payload.phase ?? payload.street) as string
+
+        // Community cards: human=communityCards (Card[]), compact=board (string[])
+        const communityCards = normalizeCards(payload.communityCards ?? payload.community_cards ?? payload.board)
+
+        console.log(`\n${formatHandHeader({ handNumber, phase, totalPot })}`)
+        console.log(formatCommunityLine(communityCards as never[]))
+
+        // Find my player: human uses seatId, compact uses seat
+        const players = (payload.players ?? []) as Array<Record<string, unknown>>
+        const myPlayer = players.find((p) => (p.seatId ?? p.seat) === mySeatId)
+
+        // Hole cards: human=holeCards (Card[]), compact=cards (string[])
+        const myCards = normalizeCards(myPlayer?.holeCards ?? myPlayer?.cards)
+        if (myCards.length > 0) {
+          console.log(formatMyCardsLine({ cards: myCards as never[], seatId: mySeatId }))
+          console.log(formatStackLine({ stack: myPlayer?.stack as number, toCall: (payload.toCall ?? payload.to_call ?? 0) as number }))
+        }
+
+        // Legal actions: human=legalActions/currentSeat, compact=actions/turn
+        const currentSeat = (payload.currentSeat ?? payload.turn) as number | null | undefined
+        const legalActions = normalizeLegalActions(payload.legalActions ?? payload.legal_actions ?? payload.actions)
+        if (currentSeat === mySeatId && legalActions.length > 0)
+          console.log(formatLegalActionsLine(legalActions as never[]))
+
+        break
+      }
+
+      case 'ack':
+        console.log(`Action ${payload.action_id ?? payload.actionId} acknowledged (seq: ${payload.seq ?? msgRecord.seq})`)
+        break
+
+      case 'error':
+        console.error(`Error: ${payload.code ?? msgRecord.code} - ${payload.message ?? msgRecord.message}`)
+        break
+
+      case 'hand_complete': {
+        // Hand number: human=handNumber, compact=hand
+        const handNumber = (payload.handNumber ?? payload.hand_number ?? payload.hand) as number
+        console.log(`\n${formatHandCompleteHeader(handNumber)}`)
+        const results = (payload.results ?? []) as Array<Record<string, unknown>>
+        for (const r of results) {
+          // Seat: human=seatId, compact=seat
+          const seatId = (r.seatId ?? r.seat) as number
+          const isMe = seatId === mySeatId
+          // Cards: human=holeCards (Card[]), compact=cards (string[])
+          const cards = normalizeCards(r.holeCards ?? r.cards)
+          // Hand rank: human=handRank, compact=rank
+          const handRank = (r.handRank ?? r.rank) as string | null | undefined
+          // Winnings: human=winnings, compact=won
+          const winnings = (r.winnings ?? r.won ?? 0) as number
+          console.log(formatSeatResultLine({
+            seatId,
+            isMe,
+            cards: cards as never[],
+            handRank,
+            winnings,
+          }))
+          if (isMe && winnings > 0)
+            console.log(`[${agentName}] Hand ${handNumber}: Won ${winnings}!`)
+        }
+        console.log('')
+        break
+      }
+
+      case 'table_status':
+        if (msg.status === 'ended') {
+          console.log(`\nTable status: ended (${(msg.reason as string) ?? 'table ended'})`)
+        } else {
+          console.log(`Table status: ${msg.status} (${msg.current_players}/${msg.min_players_to_start} players)`)
+          if (msg.status === 'waiting') console.log('Waiting for more players to join...')
+        }
+        break
+
+      case 'player_joined':
+        console.log(`Player joined: seat ${msg.seatId} (${msg.agentName || msg.agentId})`)
+        break
+
+      case 'player_left':
+        console.log(`Player left: seat ${msg.seatId}`)
+        break
+    }
+  }
+
+  return (step: StepEvent) => {
+    for (const t of step.tools) {
+      switch (t.toolName) {
+        case 'fetch_document':
+          // Silent – the skill doc fetch is an internal bootstrap step
+          break
+
+        case 'http_request': {
+          const input = t.input as Record<string, unknown> | null
+          const output = t.output as Record<string, unknown> | null
+          const body = safeParseJson(output?.body)
+
+          if (input?.method === 'POST' && typeof input.url === 'string' && input.url.endsWith('/v1/agents')) {
+            console.log('Registering new agent...')
+            if (body?.agent_id) console.log(`Registered as ${body.agent_id}`)
+          } else if (input?.method === 'GET' && typeof input.url === 'string' && input.url.endsWith('/v1/tables')) {
+            console.log('Looking for available table...')
+            const tables = (body?.tables ?? []) as Array<Record<string, unknown>>
+            const table = tables.find((tb) => tb.status === 'waiting' && (tb.availableSeats as number) > 0)
+            if (table) console.log(`Found table ${table.id}`)
+          } else if (input?.method === 'POST' && typeof input.url === 'string' && input.url.includes('/join')) {
+            // Extract table ID from URL
+            const tableMatch = (input.url as string).match(/tables\/([^/]+)\/join/)
+            const tableId = tableMatch?.[1] ?? 'unknown'
+            console.log(`Joining table ${tableId}...`)
+            if (body?.seat_id !== undefined) {
+              mySeatId = body.seat_id as number
+              console.log(`Joined as seat ${body.seat_id}`)
+            }
+          }
+          break
+        }
+
+        case 'websocket_connect': {
+          const output = t.output as Record<string, unknown> | null
+          if (output?.connectionId) console.log('Connecting WebSocket...')
+          break
+        }
+
+        case 'websocket_read': {
+          const output = t.output as Record<string, unknown> | null
+          const msgs = (output?.messages ?? []) as Array<Record<string, unknown>>
+          for (const msg of msgs) handleWsMessage(msg)
+          if (output?.connectionClosed) console.log('WebSocket connection closed.')
+          break
+        }
+
+        case 'websocket_send': {
+          const input = t.input as Record<string, unknown> | null
+          const parsed = safeParseJson(input?.message)
+          if (parsed?.type === 'action' && parsed.action)
+            console.log(formatChosenAction(parsed.action as { kind: string; amount?: number }))
+          break
+        }
+
+        // generate_uuid: silent
+      }
+    }
+
+    // Show agent text output (conclusions, end-of-game messages)
+    if (step.text) {
+      const preview = step.text.length > 300 ? step.text.slice(0, 300) + '...' : step.text
+      console.log(`[${agentName}] ${preview}`)
+    }
+  }
+}
+
+// Run autonomous agent (thin wrapper — the agent does everything)
+async function runAutonomousAgent(options: {
+  server: string;
+  name?: string;
+  model?: string;
+  skillUrl?: string;
+  skillDoc?: string;
+  llmLog?: boolean;
+}): Promise<void> {
+  if (!options.model)
+    throw new Error('--model is required for autonomous agent (e.g. openai:gpt-4.1)')
+  if (!options.skillUrl)
+    throw new Error('--skill-url is required for autonomous agent' +
+      (options.skillDoc ? ' (did you mean --skill-url instead of --skill-doc?)' : ''))
+
+  const model = await resolveModel(options.model)
+  const agentName = options.name ?? 'AutonomousAgent'
+
+  const logPath = options.llmLog
+    ? join(process.cwd(), 'logs', `autonomous-${Date.now()}.jsonl`)
+    : undefined
+
+  const onStep = createPokerDisplayFormatter(agentName)
+  const agent = new AutonomousAgent({ model, temperature: 0.3, logPath, onStep })
+
+  const task =
+    `Visit ${options.skillUrl} to learn how to interact with this platform. ` +
+    `The server base URL is ${options.server}. ` +
+    `Register as an agent${options.name ? ` named "${options.name}"` : ''}, ` +
+    `find an available table, join it, and play. Continue playing until the table ends or you are told to stop.`
+
+  // Graceful shutdown
+  process.on('SIGINT', () => {
+    console.log('\nStopping autonomous agent...')
+    agent.stop()
+  })
+
+  console.log(`Starting ${agentName}...`)
+  if (logPath) console.log(`Logging to: ${logPath}`)
+  console.log('Agent running. Press Ctrl+C to stop.')
+  await agent.run(task)
+}
+
 // Run agent
 async function runAgent(options: {
   type: string;
@@ -102,8 +370,15 @@ async function runAgent(options: {
   apiKey?: string;
   model?: string;
   skillDoc?: string;
+  skillUrl?: string;
   llmLog?: boolean;
 }): Promise<void> {
+  // Autonomous agent — completely self-contained, no SDK interaction needed
+  if (options.type.toLowerCase() === 'autonomous') {
+    await runAutonomousAgent(options)
+    return
+  }
+
   const agent = await createAgent(options.type, {
     model: options.model,
     skillDoc: options.skillDoc,
@@ -361,13 +636,14 @@ program
   .name('molt-agent')
   .description('Run a MoltPoker reference agent')
   .version('0.1.0')
-  .requiredOption('-t, --type <type>', 'Agent type: random, tight, callstation, llm')
+  .requiredOption('-t, --type <type>', 'Agent type: random, tight, callstation, llm, autonomous')
   .option('-s, --server <url>', 'Server URL', 'http://localhost:3000')
   .option('--table-id <id>', 'Specific table ID to join')
   .option('--name <name>', 'Agent display name')
   .option('--api-key <key>', 'Use existing API key')
   .option('--model <provider:model>', 'LLM model (e.g. openai:gpt-4.1, anthropic:claude-sonnet-4-5)')
   .option('--skill-doc <path>', 'Path to skill.md file (required for LLM agent)')
+  .option('--skill-url <url>', 'URL to skill.md document (required for autonomous agent)')
   .option('--llm-log', 'Enable JSONL logging of LLM prompts/responses (per table)')
   .action(async (options) => {
     try {

@@ -16,6 +16,7 @@ import { cancelAbandonment, checkAbandonment } from '../table/abandonmentHandler
 import { tableManager } from '../table/manager.js';
 
 import { broadcastManager } from './broadcastManager.js';
+import type { WsFormat } from './broadcastManager.js';
 import { handleMessage } from './messageHandler.js';
 
 
@@ -26,8 +27,10 @@ export function registerWebSocketRoutes(fastify: FastifyInstance): void {
   fastify.get('/v1/ws', { websocket: true }, async (connection, request) => {
     const ws = connection;
 
-    // Get token from query params
-    const token = (request.query as { token?: string }).token;
+    // Get token and format from query params
+    const query = request.query as { token?: string; format?: string };
+    const token = query.token;
+    const format: WsFormat = query.format === 'agent' ? 'agent' : 'human';
 
     if (!token) {
       sendErrorAndClose(ws, ErrorCodes.UNAUTHORIZED, 'Session token is required');
@@ -50,7 +53,7 @@ export function registerWebSocketRoutes(fastify: FastifyInstance): void {
     if (table) {
       // Table is running — register and send welcome + game state
       cancelAbandonment(tableId);
-      broadcastManager.register(tableId, agentId, seatId, ws);
+      broadcastManager.register(tableId, agentId, seatId, ws, format);
 
       // Update last seen
       db.updateAgentLastSeen(agentId).catch(() => {});
@@ -86,7 +89,7 @@ export function registerWebSocketRoutes(fastify: FastifyInstance): void {
       const seats = await db.getSeats(tableId);
       const currentPlayers = seats.filter((s) => s.agent_id).length;
 
-      broadcastManager.registerPending(tableId, agentId, seatId, ws);
+      broadcastManager.registerPending(tableId, agentId, seatId, ws, format);
 
       // Update last seen
       db.updateAgentLastSeen(agentId).catch(() => {});

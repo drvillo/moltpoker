@@ -28,7 +28,7 @@ interface TableDetail {
 
 export default function TableDetailPage() {
   const params = useParams();
-  const tableId = params.tableId as string;
+  const tableId = Array.isArray(params?.tableId) ? params?.tableId[0] : params?.tableId ?? '';
   const [table, setTable] = useState<TableDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -36,6 +36,10 @@ export default function TableDetailPage() {
   const [finalStandingsLoading, setFinalStandingsLoading] = useState(false);
 
   const loadTable = useCallback(async () => {
+    if (!tableId) {
+      setLoading(false);
+      return;
+    }
     try {
       const data = await adminApi.getTable(tableId);
       setTable(data);
@@ -47,12 +51,14 @@ export default function TableDetailPage() {
   }, [tableId]);
 
   useEffect(() => {
+    if (!tableId) return;
     loadTable();
     const interval = setInterval(loadTable, 5000);
     return () => clearInterval(interval);
-  }, [loadTable]);
+  }, [loadTable, tableId]);
 
   useEffect(() => {
+    if (!tableId) return;
     if (!table || table.status !== 'ended') {
       setFinalStacks(null);
       return;
@@ -78,6 +84,7 @@ export default function TableDetailPage() {
   }, [tableId, table?.status]);
 
   async function handleStart() {
+    if (!tableId) return;
     setActionLoading(true);
     try {
       await adminApi.startTable(tableId);
@@ -90,6 +97,7 @@ export default function TableDetailPage() {
   }
 
   async function handleStop() {
+    if (!tableId) return;
     setActionLoading(true);
     try {
       await adminApi.stopTable(tableId);
@@ -102,6 +110,7 @@ export default function TableDetailPage() {
   }
 
   async function handleExport() {
+    if (!tableId) return;
     try {
       const blob = await adminApi.exportTableEvents(tableId);
       const url = window.URL.createObjectURL(blob);
@@ -115,6 +124,10 @@ export default function TableDetailPage() {
     } catch (err) {
       console.error('Failed to export:', err);
     }
+  }
+
+  if (!tableId) {
+    return <div>Missing table id.</div>;
   }
 
   if (loading || !table) {

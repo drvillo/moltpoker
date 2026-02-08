@@ -140,5 +140,87 @@ describe('Hand Evaluator', () => {
       // Same straight A-K-Q-J-T
       expect(compareHands(hand1, hand2)).toBe(0);
     });
+
+    it('should break full house tie by trips rank', () => {
+      const fhAces = evaluateHand(
+        [card('As'), card('Ah')],
+        [card('Ad'), card('2s'), card('2h')]
+      );
+      const fhKings = evaluateHand(
+        [card('Ks'), card('Kh')],
+        [card('Kd'), card('Qs'), card('Qh')]
+      );
+      
+      // AAA-22 beats KKK-QQ
+      expect(compareHands(fhAces, fhKings)).toBeGreaterThan(0);
+    });
+
+    it('should break full house tie by pair rank when trips are equal', () => {
+      const fhKingsQueens = evaluateHand(
+        [card('Ks'), card('Kh')],
+        [card('Kd'), card('Qs'), card('Qh')]
+      );
+      const fhKingsJacks = evaluateHand(
+        [card('Kc'), card('Kh')],
+        [card('Kd'), card('Js'), card('Jh')]
+      );
+      
+      // KKK-QQ beats KKK-JJ
+      expect(compareHands(fhKingsQueens, fhKingsJacks)).toBeGreaterThan(0);
+    });
+
+    it('should break flush tie by highest differing card', () => {
+      const flushAce = evaluateHand(
+        [card('As'), card('8s')],
+        [card('6s'), card('4s'), card('2s')]
+      );
+      const flushKing = evaluateHand(
+        [card('Ks'), card('8s')],
+        [card('6s'), card('4s'), card('2s')]
+      );
+      
+      expect(compareHands(flushAce, flushKing)).toBeGreaterThan(0);
+    });
+
+    it('should tie when board plays for all (7-card evaluation)', () => {
+      const board: Card[] = [card('As'), card('Kh'), card('Qd'), card('Jc'), card('Ts')];
+      const hand1 = evaluateHand([card('2h'), card('3d')], board);
+      const hand2 = evaluateHand([card('4c'), card('5h')], board);
+      
+      // Both play A-K-Q-J-T straight from board
+      expect(compareHands(hand1, hand2)).toBe(0);
+    });
+
+    it('should pick best 5 from 7 cards', () => {
+      // Board has pair of aces, player has pair of kings = two pair
+      // But another player has trips from board + hole
+      const board: Card[] = [card('As'), card('Ah'), card('7d'), card('4c'), card('2s')];
+      const twoPair = evaluateHand([card('Ks'), card('Kh')], board); // AA-KK
+      const trips = evaluateHand([card('Ad'), card('9c')], board); // AAA
+
+      expect(twoPair.rank).toBe(HandRanks.TWO_PAIR);
+      expect(trips.rank).toBe(HandRanks.THREE_OF_A_KIND);
+      expect(compareHands(trips, twoPair)).toBeGreaterThan(0);
+    });
+
+    it('should handle three-of-a-kind kicker comparison', () => {
+      const board: Card[] = [card('Ts'), card('Th'), card('Td'), card('3c'), card('2s')];
+      const highKicker = evaluateHand([card('As'), card('9h')], board); // TTT, A-9
+      const lowKicker = evaluateHand([card('Ks'), card('8h')], board); // TTT, K-8
+
+      expect(highKicker.rank).toBe(HandRanks.THREE_OF_A_KIND);
+      expect(lowKicker.rank).toBe(HandRanks.THREE_OF_A_KIND);
+      expect(compareHands(highKicker, lowKicker)).toBeGreaterThan(0);
+    });
+
+    it('should compare high card hands across multiple kickers', () => {
+      const board: Card[] = [card('Ks'), card('9h'), card('5d'), card('3c'), card('2s')];
+      const aceQueen = evaluateHand([card('As'), card('Qh')], board); // A-K-Q-9-5
+      const aceJack = evaluateHand([card('Ad'), card('Jh')], board); // A-K-J-9-5
+
+      expect(aceQueen.rank).toBe(HandRanks.HIGH_CARD);
+      expect(aceJack.rank).toBe(HandRanks.HIGH_CARD);
+      expect(compareHands(aceQueen, aceJack)).toBeGreaterThan(0);
+    });
   });
 });

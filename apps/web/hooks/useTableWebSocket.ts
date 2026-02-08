@@ -7,7 +7,7 @@ interface UseTableWebSocketOptions {
 }
 
 export function useTableWebSocket(
-  tableId: string,
+  tableId?: string,
   options: UseTableWebSocketOptions = {}
 ): {
   connected: boolean;
@@ -24,6 +24,14 @@ export function useTableWebSocket(
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    if (!tableId) {
+      setConnected(false)
+      setGameState(null)
+      setHandComplete(null)
+      setError('Missing table id.')
+      return
+    }
+
     // Build API URL from components or use fallback
     let apiUrl: string;
     if (process.env.NEXT_PUBLIC_API_URL) {

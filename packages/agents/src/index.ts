@@ -9,6 +9,14 @@ export { CallStationAgent } from './callStation.js';
 // LLM agent
 export { LlmAgent, type LlmAgentConfig, formatGameState } from './llm.js';
 
+// Autonomous agent (domain-agnostic, discovers everything from skill.md)
+export {
+  AutonomousAgent,
+  type AutonomousAgentConfig,
+  type StepEvent,
+  type ToolStep,
+} from './autonomous.js';
+
 // Output formatting utilities
 export {
   formatCards,

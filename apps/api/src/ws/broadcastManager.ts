@@ -1,5 +1,5 @@
 
-import type { TableRuntime } from '@moltpoker/poker';
+import type { TableRuntime } from '@moltpoker/poker'
 import type {
   ErrorPayload,
   GameStatePayload,
@@ -7,58 +7,70 @@ import type {
   TableStatusPayload,
   WelcomePayload,
   WsMessageEnvelope,
-} from '@moltpoker/shared';
-import type { WebSocket } from 'ws';
+} from '@moltpoker/shared'
+import type { WebSocket } from 'ws'
+
+import { formatMessage } from './compactFormat.js'
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export type WsFormat = 'agent' | 'human'
 
 interface Connection {
-  ws: WebSocket;
-  agentId: string;
-  seatId: number;
+  ws: WebSocket
+  agentId: string
+  seatId: number
+  format: WsFormat
 }
 
 interface PendingConnection {
-  ws: WebSocket;
-  agentId: string;
-  seatId: number;
+  ws: WebSocket
+  agentId: string
+  seatId: number
+  format: WsFormat
 }
+
+// ─── Broadcast Manager ──────────────────────────────────────────────────────
 
 /**
  * Broadcast manager for WebSocket connections
  */
 class BroadcastManager {
   // tableId -> connections
-  private connections: Map<string, Map<string, Connection>> = new Map();
+  private connections: Map<string, Map<string, Connection>> = new Map()
   // tableId -> observer connections
-  private observers: Map<string, Set<WebSocket>> = new Map();
+  private observers: Map<string, Set<WebSocket>> = new Map()
   // tableId -> pending connections (waiting tables without runtime)
-  private pendingConnections: Map<string, Map<string, PendingConnection>> = new Map();
+  private pendingConnections: Map<string, Map<string, PendingConnection>> = new Map()
+
+  // ─── Connection Management ───────────────────────────────────────────────
 
   /**
    * Register a connection for a table
    */
-  register(tableId: string, agentId: string, seatId: number, ws: WebSocket): void {
+  register(tableId: string, agentId: string, seatId: number, ws: WebSocket, format: WsFormat = 'human'): void {
     if (!this.connections.has(tableId)) {
-      this.connections.set(tableId, new Map());
+      this.connections.set(tableId, new Map())
     }
 
-    const tableConnections = this.connections.get(tableId)!;
-    tableConnections.set(agentId, { ws, agentId, seatId });
+    const tableConnections = this.connections.get(tableId)!
+    tableConnections.set(agentId, { ws, agentId, seatId, format })
 
     // Handle disconnect
     ws.on('close', () => {
-      this.unregister(tableId, agentId);
-    });
+      this.unregister(tableId, agentId)
+    })
   }
 
   /**
    * Unregister a connection
    */
   unregister(tableId: string, agentId: string): void {
-    const tableConnections = this.connections.get(tableId);
+    const tableConnections = this.connections.get(tableId)
     if (tableConnections) {
-      tableConnections.delete(agentId);
+      tableConnections.delete(agentId)
       if (tableConnections.size === 0) {
-        this.connections.delete(tableId);
+        this.connections.delete(tableId)
       }
     }
   }
@@ -68,24 +80,24 @@ class BroadcastManager {
    */
   registerObserver(tableId: string, ws: WebSocket): void {
     if (!this.observers.has(tableId)) {
-      this.observers.set(tableId, new Set());
+      this.observers.set(tableId, new Set())
     }
-    this.observers.get(tableId)!.add(ws);
+    this.observers.get(tableId)!.add(ws)
 
     ws.on('close', () => {
-      this.unregisterObserver(tableId, ws);
-    });
+      this.unregisterObserver(tableId, ws)
+    })
   }
 
   /**
    * Unregister an observer
    */
   unregisterObserver(tableId: string, ws: WebSocket): void {
-    const tableObservers = this.observers.get(tableId);
+    const tableObservers = this.observers.get(tableId)
     if (tableObservers) {
-      tableObservers.delete(ws);
+      tableObservers.delete(ws)
       if (tableObservers.size === 0) {
-        this.observers.delete(tableId);
+        this.observers.delete(tableId)
       }
     }
   }
@@ -93,28 +105,28 @@ class BroadcastManager {
   /**
    * Register a pending connection (for waiting tables without a runtime)
    */
-  registerPending(tableId: string, agentId: string, seatId: number, ws: WebSocket): void {
+  registerPending(tableId: string, agentId: string, seatId: number, ws: WebSocket, format: WsFormat = 'human'): void {
     if (!this.pendingConnections.has(tableId)) {
-      this.pendingConnections.set(tableId, new Map());
+      this.pendingConnections.set(tableId, new Map())
     }
 
-    const tablePending = this.pendingConnections.get(tableId)!;
-    tablePending.set(agentId, { ws, agentId, seatId });
+    const tablePending = this.pendingConnections.get(tableId)!
+    tablePending.set(agentId, { ws, agentId, seatId, format })
 
     ws.on('close', () => {
-      this.unregisterPending(tableId, agentId);
-    });
+      this.unregisterPending(tableId, agentId)
+    })
   }
 
   /**
    * Unregister a pending connection
    */
   unregisterPending(tableId: string, agentId: string): void {
-    const tablePending = this.pendingConnections.get(tableId);
+    const tablePending = this.pendingConnections.get(tableId)
     if (tablePending) {
-      tablePending.delete(agentId);
+      tablePending.delete(agentId)
       if (tablePending.size === 0) {
-        this.pendingConnections.delete(tableId);
+        this.pendingConnections.delete(tableId)
       }
     }
   }
@@ -123,8 +135,8 @@ class BroadcastManager {
    * Get all pending connections for a table
    */
   getPendingConnections(tableId: string): PendingConnection[] {
-    const tablePending = this.pendingConnections.get(tableId);
-    return tablePending ? [...tablePending.values()] : [];
+    const tablePending = this.pendingConnections.get(tableId)
+    return tablePending ? [...tablePending.values()] : []
   }
 
   /**
@@ -132,33 +144,115 @@ class BroadcastManager {
    * Called when a waiting table transitions to running.
    */
   promotePendingConnections(tableId: string): PendingConnection[] {
-    const tablePending = this.pendingConnections.get(tableId);
-    if (!tablePending || tablePending.size === 0) return [];
+    const tablePending = this.pendingConnections.get(tableId)
+    if (!tablePending || tablePending.size === 0) return []
 
-    const promoted: PendingConnection[] = [];
+    const promoted: PendingConnection[] = []
     for (const pending of tablePending.values()) {
       // Register as a real connection (skip close listener since pending already has one)
       if (!this.connections.has(tableId)) {
-        this.connections.set(tableId, new Map());
+        this.connections.set(tableId, new Map())
       }
       this.connections.get(tableId)!.set(pending.agentId, {
         ws: pending.ws,
         agentId: pending.agentId,
         seatId: pending.seatId,
-      });
-      promoted.push(pending);
+        format: pending.format,
+      })
+      promoted.push(pending)
     }
 
     // Clear pending map for this table
-    this.pendingConnections.delete(tableId);
-    return promoted;
+    this.pendingConnections.delete(tableId)
+    return promoted
+  }
+
+  // ─── Connection Queries ──────────────────────────────────────────────────
+
+  /**
+   * Get connection for an agent
+   */
+  getConnection(tableId: string, agentId: string): Connection | undefined {
+    return this.connections.get(tableId)?.get(agentId)
   }
 
   /**
-   * Send table_status message to a connection
+   * Get all connections for a table
+   */
+  getConnections(tableId: string): Connection[] {
+    const tableConnections = this.connections.get(tableId)
+    return tableConnections ? [...tableConnections.values()] : []
+  }
+
+  /**
+   * Get connection count for a table
+   */
+  getConnectionCount(tableId: string): number {
+    return this.connections.get(tableId)?.size ?? 0
+  }
+
+  // ─── Core Send (single format-branching point — DRY) ────────────────────
+
+  /**
+   * Send a message to a WebSocket, applying the correct serialisation based
+   * on the requested format.
+   *
+   * This is the **only** method that inspects the format flag — every other
+   * send/broadcast method delegates here, keeping format logic in one place.
+   */
+  private sendTo(
+    ws: WebSocket,
+    format: WsFormat,
+    type: WsMessageEnvelope['type'],
+    payload: unknown,
+    tableId?: string,
+    seq?: number,
+  ): void {
+    if (ws.readyState !== ws.OPEN) return
+
+    if (format === 'agent') {
+      ws.send(JSON.stringify(formatMessage(type, payload, tableId, seq)))
+    } else {
+      ws.send(JSON.stringify(this.createEnvelope(type, payload, tableId, seq)))
+    }
+  }
+
+  /**
+   * Send a message in the default (human) format. Used for observers and
+   * any WebSocket that is not tracked as a Connection (e.g. raw observer ws).
+   */
+  private sendHuman(ws: WebSocket, type: WsMessageEnvelope['type'], payload: unknown, tableId?: string, seq?: number): void {
+    this.sendTo(ws, 'human', type, payload, tableId, seq)
+  }
+
+  /**
+   * Create a standard (human-format) message envelope.
+   */
+  private createEnvelope(
+    type: WsMessageEnvelope['type'],
+    payload: unknown,
+    tableId?: string,
+    seq?: number,
+  ): WsMessageEnvelope {
+    return {
+      type,
+      table_id: tableId,
+      seq,
+      ts: Date.now(),
+      payload,
+    }
+  }
+
+  // ─── Message Senders ─────────────────────────────────────────────────────
+
+  /**
+   * Send table_status message to a raw WebSocket (no Connection record).
+   * Used during the pending-connection phase before an agent is registered.
+   * Always sends in human format since the format is not yet negotiated via
+   * a Connection object; pending connections use sendTableStatusToConn.
    */
   sendTableStatus(ws: WebSocket, tableId: string, payload: TableStatusPayload): void {
-    this.send(ws, this.createEnvelope('table_status', payload, tableId));
+    this.sendHuman(ws, 'table_status', payload, tableId)
   }
 
   /**
@@ -167,82 +261,39 @@ class BroadcastManager {
   broadcastTableStatus(
     tableId: string,
     payload: TableStatusPayload,
-    options?: { includeObservers?: boolean; includePending?: boolean }
+    options?: { includeObservers?: boolean; includePending?: boolean },
   ): void {
-    const { includeObservers = false, includePending = true } = options ?? {};
+    const { includeObservers = false, includePending = true } = options ?? {}
 
-    const envelope = this.createEnvelope('table_status', payload, tableId);
-    const connections = this.getConnections(tableId);
+    const connections = this.getConnections(tableId)
     for (const conn of connections) {
-      this.send(conn.ws, envelope);
+      this.sendTo(conn.ws, conn.format, 'table_status', payload, tableId)
     }
 
     if (includePending) {
-      const pending = this.getPendingConnections(tableId);
+      const pending = this.getPendingConnections(tableId)
       for (const conn of pending) {
-        this.send(conn.ws, envelope);
+        this.sendTo(conn.ws, conn.format, 'table_status', payload, tableId)
       }
     }
 
     if (includeObservers) {
-      const observers = this.observers.get(tableId);
+      const observers = this.observers.get(tableId)
       if (observers) {
         for (const ws of observers) {
-          this.send(ws, envelope);
+          this.sendHuman(ws, 'table_status', payload, tableId)
         }
       }
     }
   }
 
   /**
-   * Get connection for an agent
-   */
-  getConnection(tableId: string, agentId: string): Connection | undefined {
-    return this.connections.get(tableId)?.get(agentId);
-  }
-
-  /**
-   * Get all connections for a table
-   */
-  getConnections(tableId: string): Connection[] {
-    const tableConnections = this.connections.get(tableId);
-    return tableConnections ? [...tableConnections.values()] : [];
-  }
-
-  /**
-   * Send a message to a specific WebSocket
-   */
-  private send(ws: WebSocket, message: WsMessageEnvelope): void {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify(message));
-    }
-  }
-
-  /**
-   * Create a message envelope
-   */
-  private createEnvelope(
-    type: WsMessageEnvelope['type'],
-    payload: unknown,
-    tableId?: string,
-    seq?: number
-  ): WsMessageEnvelope {
-    return {
-      type,
-      table_id: tableId,
-      seq,
-      ts: Date.now(),
-      payload,
-    };
-  }
-
-  /**
    * Send welcome message to a connection
    */
   sendWelcome(tableId: string, agentId: string, payload: WelcomePayload): void {
-    const conn = this.getConnection(tableId, agentId);
+    const conn = this.getConnection(tableId, agentId)
     if (conn) {
-      this.send(conn.ws, this.createEnvelope('welcome', payload, tableId));
+      this.sendTo(conn.ws, conn.format, 'welcome', payload, tableId)
     }
   }
 
@@ -250,9 +301,9 @@ class BroadcastManager {
    * Send game state to a specific connection
    */
   sendGameState(tableId: string, agentId: string, state: GameStatePayload): void {
-    const conn = this.getConnection(tableId, agentId);
+    const conn = this.getConnection(tableId, agentId)
     if (conn) {
-      this.send(conn.ws, this.createEnvelope('game_state', state, tableId, state.seq));
+      this.sendTo(conn.ws, conn.format, 'game_state', state, tableId, state.seq)
     }
   }
 
@@ -264,11 +315,11 @@ class BroadcastManager {
     agentId: string,
     actionId: string,
     seq: number,
-    success: boolean
+    success: boolean,
   ): void {
-    const conn = this.getConnection(tableId, agentId);
+    const conn = this.getConnection(tableId, agentId)
     if (conn) {
-      this.send(conn.ws, this.createEnvelope('ack', { action_id: actionId, seq, success }, tableId, seq));
+      this.sendTo(conn.ws, conn.format, 'ack', { action_id: actionId, seq, success }, tableId, seq)
     }
   }
 
@@ -276,9 +327,9 @@ class BroadcastManager {
    * Send error to a specific connection
    */
   sendError(tableId: string, agentId: string, error: ErrorPayload): void {
-    const conn = this.getConnection(tableId, agentId);
+    const conn = this.getConnection(tableId, agentId)
     if (conn) {
-      this.send(conn.ws, this.createEnvelope('error', error, tableId));
+      this.sendTo(conn.ws, conn.format, 'error', error, tableId)
     }
   }
 
@@ -286,20 +337,19 @@ class BroadcastManager {
    * Broadcast game state to all connections at a table
    */
   broadcastGameState(tableId: string, runtime: TableRuntime): void {
-    const connections = this.getConnections(tableId);
+    const connections = this.getConnections(tableId)
 
     for (const conn of connections) {
-      const state = runtime.getStateForSeat(conn.seatId);
-      this.send(conn.ws, this.createEnvelope('game_state', state, tableId, state.seq));
+      const state = runtime.getStateForSeat(conn.seatId)
+      this.sendTo(conn.ws, conn.format, 'game_state', state, tableId, state.seq)
     }
 
-    // Send public state to observers
-    const observers = this.observers.get(tableId);
+    // Send public state to observers (always human format)
+    const observers = this.observers.get(tableId)
     if (observers) {
-      const publicState = runtime.getPublicState();
-      const envelope = this.createEnvelope('game_state', publicState, tableId, publicState.seq);
+      const publicState = runtime.getPublicState()
       for (const ws of observers) {
-        this.send(ws, envelope);
+        this.sendHuman(ws, 'game_state', publicState, tableId, publicState.seq)
       }
     }
   }
@@ -308,18 +358,16 @@ class BroadcastManager {
    * Broadcast hand complete to all connections at a table
    */
   broadcastHandComplete(tableId: string, payload: HandCompletePayload): void {
-    const connections = this.getConnections(tableId);
-    const envelope = this.createEnvelope('hand_complete', payload, tableId);
-
+    const connections = this.getConnections(tableId)
     for (const conn of connections) {
-      this.send(conn.ws, envelope);
+      this.sendTo(conn.ws, conn.format, 'hand_complete', payload, tableId)
     }
 
-    // Send to observers
-    const observers = this.observers.get(tableId);
+    // Send to observers (always human format)
+    const observers = this.observers.get(tableId)
     if (observers) {
       for (const ws of observers) {
-        this.send(ws, envelope);
+        this.sendHuman(ws, 'hand_complete', payload, tableId)
       }
     }
   }
@@ -332,23 +380,19 @@ class BroadcastManager {
     seatId: number,
     agentId: string,
     agentName: string | null,
-    stack: number
+    stack: number,
   ): void {
-    const envelope = this.createEnvelope(
-      'player_joined',
-      { seatId, agentId, agentName, stack },
-      tableId
-    );
+    const payload = { seatId, agentId, agentName, stack }
 
-    const connections = this.getConnections(tableId);
+    const connections = this.getConnections(tableId)
     for (const conn of connections) {
-      this.send(conn.ws, envelope);
+      this.sendTo(conn.ws, conn.format, 'player_joined', payload, tableId)
     }
 
-    const observers = this.observers.get(tableId);
+    const observers = this.observers.get(tableId)
     if (observers) {
       for (const ws of observers) {
-        this.send(ws, envelope);
+        this.sendHuman(ws, 'player_joined', payload, tableId)
       }
     }
   }
@@ -357,17 +401,17 @@ class BroadcastManager {
    * Broadcast player left to all connections
    */
   broadcastPlayerLeft(tableId: string, seatId: number, agentId: string): void {
-    const envelope = this.createEnvelope('player_left', { seatId, agentId }, tableId);
+    const payload = { seatId, agentId }
 
-    const connections = this.getConnections(tableId);
+    const connections = this.getConnections(tableId)
     for (const conn of connections) {
-      this.send(conn.ws, envelope);
+      this.sendTo(conn.ws, conn.format, 'player_left', payload, tableId)
     }
 
-    const observers = this.observers.get(tableId);
+    const observers = this.observers.get(tableId)
     if (observers) {
       for (const ws of observers) {
-        this.send(ws, envelope);
+        this.sendHuman(ws, 'player_left', payload, tableId)
       }
     }
   }
@@ -376,46 +420,37 @@ class BroadcastManager {
    * Send pong response
    */
   sendPong(ws: WebSocket, timestamp: number): void {
-    const envelope: WsMessageEnvelope = {
-      type: 'pong',
-      ts: Date.now(),
-      payload: { timestamp },
-    };
-    this.send(ws, envelope);
+    // Pong is a low-level response — always human format (no Connection lookup)
+    this.sendHuman(ws, 'pong', { timestamp })
   }
 
-  /**
-   * Get connection count for a table
-   */
-  getConnectionCount(tableId: string): number {
-    return this.connections.get(tableId)?.size ?? 0;
-  }
+  // ─── Lifecycle ───────────────────────────────────────────────────────────
 
   /**
    * Disconnect all connections for a table
    */
   disconnectAll(tableId: string): void {
-    const connections = this.getConnections(tableId);
+    const connections = this.getConnections(tableId)
     for (const conn of connections) {
-      conn.ws.close(1000, 'Table ended');
+      conn.ws.close(1000, 'Table ended')
     }
-    this.connections.delete(tableId);
+    this.connections.delete(tableId)
 
     // Close pending connections too
-    const pending = this.getPendingConnections(tableId);
+    const pending = this.getPendingConnections(tableId)
     for (const conn of pending) {
-      conn.ws.close(1000, 'Table ended');
+      conn.ws.close(1000, 'Table ended')
     }
-    this.pendingConnections.delete(tableId);
+    this.pendingConnections.delete(tableId)
 
-    const observers = this.observers.get(tableId);
+    const observers = this.observers.get(tableId)
     if (observers) {
       for (const ws of observers) {
-        ws.close(1000, 'Table ended');
+        ws.close(1000, 'Table ended')
       }
-      this.observers.delete(tableId);
+      this.observers.delete(tableId)
     }
   }
 }
 
-export const broadcastManager = new BroadcastManager();
+export const broadcastManager = new BroadcastManager()

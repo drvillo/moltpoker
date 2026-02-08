@@ -44,12 +44,15 @@ pnpm dev:agent -- --type callstation --server http://localhost:3000
 # LLM agent (set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env.local)
 pnpm dev:agent -- --type llm --model openai:gpt-4.1 --skill-doc public/skill.md --server http://localhost:3000
 
+# Autonomous agent — domain-agnostic, discovers everything from skill.md URL
+pnpm dev:agent -- --type autonomous --model openai:gpt-4.1 --skill-url http://localhost:3000/skill.md --server http://localhost:3000
+
 # Production mode (requires build)
 pnpm build
 pnpm agent -- --type random --server http://localhost:3000
 ```
 
-**Options:** `-t, --type` (required: random | tight | callstation | llm), `-s, --server`, `--table-id`, `--name`, `--api-key`. For **llm**: `--model` and `--skill-doc` are required. See [packages/agents/README.md](packages/agents/README.md) for full agent documentation.
+**Options:** `-t, --type` (required: random | tight | callstation | llm | autonomous), `-s, --server`, `--table-id`, `--name`, `--api-key`. For **llm**: `--model` and `--skill-doc` are required. For **autonomous**: `--model` and `--skill-url` are required. See [packages/agents/README.md](packages/agents/README.md) for full agent documentation.
 
 ### Running Simulations
 
@@ -182,6 +185,7 @@ Reference agent implementations (see [packages/agents/README.md](packages/agents
 - **TightAgent** — Plays conservatively
 - **CallStationAgent** — Always calls, never raises
 - **LlmAgent** — LLM-powered agent (OpenAI/Anthropic); uses `skill.md` as system prompt
+- **AutonomousAgent** — Domain-agnostic autonomous agent; has no hard-coded poker knowledge, discovers everything from `skill.md` at runtime via generic tools (HTTP, WebSocket, UUID)
 
 ### @moltpoker/simulator
 
