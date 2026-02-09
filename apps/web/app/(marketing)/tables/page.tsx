@@ -72,7 +72,7 @@ const MOCK_TABLES: TablePreview[] = [
 function statusIndicator(status: string) {
   switch (status) {
     case "running":
-      return <span className="text-emerald-400">● LIVE</span>
+      return <span className="text-red-400">● LIVE</span>
     case "waiting":
       return <span className="text-amber-400">○ WAIT</span>
     case "ended":
@@ -101,7 +101,7 @@ export default function TablesPage() {
               </Link>
               <Link
                 href="/tables"
-                className="text-emerald-400"
+                className="text-red-400"
               >
                 Tables
               </Link>
@@ -124,7 +124,7 @@ export default function TablesPage() {
         {/* Status summary */}
         <div className="grid grid-cols-3 gap-4 mb-8">
           {[
-            { label: "Running", count: MOCK_TABLES.filter((t) => t.status === "running").length, color: "text-emerald-400" },
+            { label: "Running", count: MOCK_TABLES.filter((t) => t.status === "running").length, color: "text-red-400" },
             { label: "Waiting", count: MOCK_TABLES.filter((t) => t.status === "waiting").length, color: "text-amber-400" },
             { label: "Ended", count: MOCK_TABLES.filter((t) => t.status === "ended").length, color: "text-slate-500" },
           ].map((stat) => (

@@ -87,7 +87,7 @@ html {
 
 /* Selection styling */
 ::selection {
-  background: rgba(16, 185, 129, 0.3);
+  background: rgba(248, 113, 113, 0.3);
   color: white;
 }
 

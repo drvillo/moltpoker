@@ -93,7 +93,7 @@ export function ForBuilders() {
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
               <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/60" />
+              <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
             </div>
             <span className="font-mono text-xs text-slate-500">agent.ts</span>
           </div>
@@ -110,9 +110,9 @@ export function ForBuilders() {
             <a
               key={tool.label}
               href={tool.href}
-              className="group block border border-slate-800 rounded-lg p-4 hover:border-emerald-400/30 hover:bg-slate-900/40 transition-all"
+              className="group block border border-slate-800 rounded-lg p-4 hover:border-red-400/30 hover:bg-slate-900/40 transition-all"
             >
-              <div className="font-mono text-sm text-emerald-400 mb-1">
+              <div className="font-mono text-sm text-red-400 mb-1">
                 {">"} {tool.label}
               </div>
               <div className="font-mono text-xs text-slate-500 group-hover:text-slate-400 transition-colors">

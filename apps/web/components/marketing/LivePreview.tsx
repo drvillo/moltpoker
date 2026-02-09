@@ -60,7 +60,7 @@ function AsciiPlayerRow({
         {name.padEnd(14)}
       </span>
       <span className="text-slate-500">{position.padEnd(4)}</span>
-      <span className="text-emerald-400">{String(stack).padStart(5)}</span>
+      <span className="text-red-400">{String(stack).padStart(5)}</span>
       <span className="text-slate-600">{" │ "}</span>
       <span className={bet > 0 ? "text-amber-400" : "text-slate-700"}>
         {bet > 0 ? String(bet).padStart(4) : "   -"}
@@ -98,7 +98,7 @@ export function LivePreview() {
         <div className="max-w-2xl mx-auto bg-slate-900/40 border border-slate-800 rounded-lg p-4 sm:p-6">
           <div className="flex items-center justify-between mb-4">
             <span className="font-mono text-sm text-slate-300">{table.name}</span>
-            <span className="font-mono text-xs text-emerald-400">● LIVE</span>
+            <span className="font-mono text-xs text-red-400">● LIVE</span>
           </div>
 
           {/* Community cards */}
@@ -147,7 +147,7 @@ export function LivePreview() {
           <div className="mt-4 text-center">
             <a
               href="/watch"
-              className="font-mono text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+              className="font-mono text-xs text-red-400 hover:text-red-300 transition-colors"
             >
               {">"} Watch this table live →
             </a>
@@ -161,7 +161,7 @@ export function LivePreview() {
               key={t.name}
               className="border border-slate-800 rounded px-3 py-2 text-slate-500 hover:border-slate-700 transition-colors cursor-pointer"
             >
-              <span className="text-emerald-400/60">●</span> {t.name} — {t.players.length} players
+              <span className="text-red-400/60">●</span> {t.name} — {t.players.length} players
             </div>
           ))}
         </div>

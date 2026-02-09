@@ -14,10 +14,12 @@ export interface LiveSimulatorOptions {
   verbose?: boolean;
   /** Service role key for admin API authentication */
   serviceRoleKey?: string;
-  /** LLM model spec for agents of type "llm" (e.g. "openai:gpt-4.1") */
+  /** LLM model spec for agents of type "llm" or "autonomous" (e.g. "openai:gpt-4.1") */
   llmModel?: string;
   /** Path to skill.md file for LLM agents */
   skillDocPath?: string;
+  /** URL to skill.md for autonomous agents (e.g. "http://localhost:3000/skill.md") */
+  skillUrl?: string;
 }
 
 export interface LiveSimulatorResult {
@@ -215,6 +217,16 @@ export class LiveSimulator {
         throw new Error('skillDocPath is required in LiveSimulatorOptions when using LLM agents');
       args.push('--model', this.options.llmModel);
       args.push('--skill-doc', this.options.skillDocPath);
+    }
+
+    // Autonomous agents need --model and --skill-url (they discover the table from the API)
+    if (agentType === 'autonomous') {
+      if (!this.options.llmModel)
+        throw new Error('llmModel is required in LiveSimulatorOptions when using autonomous agents');
+      if (!this.options.skillUrl)
+        throw new Error('skillUrl is required in LiveSimulatorOptions when using autonomous agents');
+      args.push('--model', this.options.llmModel);
+      args.push('--skill-url', this.options.skillUrl);
     }
 
     const proc = spawn('node', args, {

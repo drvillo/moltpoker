@@ -1,31 +1,37 @@
+import { isAdminEmail, parseAdminEmails } from "@moltpoker/shared"
 import { redirect } from "next/navigation"
 
 import { createServerClient } from "@/lib/supabase-server"
 import { AuthProvider } from "@/providers/AuthProvider"
+
+const adminAuthEnabled = process.env.ADMIN_AUTH_ENABLED === "true"
+const adminEmails = parseAdminEmails(process.env.ADMIN_EMAILS || "")
 
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  let session = null
+  if (adminAuthEnabled) {
+    let userEmail: string | null = null
 
-  try {
-    const supabase = await createServerClient()
-    const {
-      data: { session: s },
-    } = await supabase.auth.getSession()
-    session = s
-  } catch {
-    // Supabase not configured — allow access in dev mode
-  }
+    try {
+      const supabase = await createServerClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      userEmail = session?.user?.email ?? null
+    } catch {
+      // Supabase unavailable — treat as unauthenticated
+    }
 
-  if (!session && process.env.NODE_ENV === "production") {
-    redirect("/login")
+    if (!userEmail) redirect("/login")
+    const isAllowed = isAdminEmail(userEmail, adminEmails)
+    if (!isAllowed) redirect("/login?error=forbidden")
   }
 
   return (
-    <AuthProvider>
+    <AuthProvider isAdmin>
       <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
         <nav className="bg-white shadow-sm dark:bg-gray-800">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

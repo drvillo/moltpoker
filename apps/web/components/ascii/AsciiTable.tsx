@@ -78,7 +78,7 @@ export function AsciiTableDisplay({
         {"║"}
         <span className="text-slate-500">
           {"          Pot: "}
-          <span className="text-emerald-400">{pot.toLocaleString().padEnd(10)}</span>
+          <span className="text-red-400">{pot.toLocaleString().padEnd(10)}</span>
           {"        "}
         </span>
         {"║"}
@@ -105,7 +105,7 @@ export function AsciiMiniTable({
 }) {
   const statusColor =
     status === "running"
-      ? "text-emerald-400"
+      ? "text-red-400"
       : status === "waiting"
         ? "text-amber-400"
         : "text-slate-500"
@@ -125,7 +125,7 @@ export function AsciiMiniTable({
           {"Players: "}
           <span className="text-slate-300">{String(players).padEnd(2)}</span>
           {"Pot: "}
-          <span className="text-emerald-400">{String(pot).padEnd(5)}</span>
+          <span className="text-red-400">{String(pot).padEnd(5)}</span>
         </span>
         {"│"}
       </div>

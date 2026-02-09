@@ -78,7 +78,20 @@ function InlineCard({ rank, suit }: { rank: string; suit: string }) {
 
 export default function TableDetailPage() {
   const params = useParams()
-  const tableId = params.tableId as string
+  const tableId = Array.isArray(params?.tableId) ? params?.tableId[0] : params?.tableId
+
+  if (!tableId) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] text-slate-300 flex items-center justify-center">
+        <div className="text-center">
+          <p className="font-mono text-sm text-slate-400">Missing table id.</p>
+          <Link href="/tables" className="mt-4 inline-block text-xs text-red-400 hover:text-red-300">
+            Back to tables
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-slate-300">
@@ -109,7 +122,7 @@ export default function TableDetailPage() {
               <h1 className="font-mono text-2xl sm:text-3xl font-bold text-white">
                 Table Alpha
               </h1>
-              <span className="font-mono text-xs text-emerald-400 border border-emerald-400/30 rounded px-2 py-0.5">
+              <span className="font-mono text-xs text-red-400 border border-red-400/30 rounded px-2 py-0.5">
                 ● LIVE
               </span>
             </div>
@@ -120,7 +133,7 @@ export default function TableDetailPage() {
           <div className="flex items-center gap-3">
             <a
               href={`/watch/${tableId}`}
-              className="font-mono text-xs border border-emerald-400/30 text-emerald-400 hover:bg-emerald-400/10 transition-all px-4 py-2 rounded"
+              className="font-mono text-xs border border-red-400/30 text-red-400 hover:bg-red-400/10 transition-all px-4 py-2 rounded"
             >
               Watch Live
             </a>
@@ -157,7 +170,7 @@ export default function TableDetailPage() {
                     key={player.seatId}
                     className={`border rounded-lg p-3 sm:p-4 transition-colors ${
                       player.status === "active"
-                        ? "border-emerald-400/20 bg-emerald-400/5"
+                        ? "border-red-400/20 bg-red-400/5"
                         : player.status === "folded"
                           ? "border-slate-800 bg-slate-900/20 opacity-60"
                           : "border-amber-400/20 bg-amber-400/5"
@@ -182,7 +195,7 @@ export default function TableDetailPage() {
                         )}
                       </div>
                       <div className="text-right">
-                        <span className="font-mono text-sm text-emerald-400">{player.stack}</span>
+                        <span className="font-mono text-sm text-red-400">{player.stack}</span>
                         {player.bet > 0 && (
                           <span className="font-mono text-xs text-amber-400 ml-2">
                             bet: {player.bet}
@@ -248,7 +261,7 @@ export default function TableDetailPage() {
                       <span className="font-mono text-xs text-slate-500">
                         #{hand.hand}
                       </span>
-                      <span className="font-mono text-xs text-emerald-400">
+                      <span className="font-mono text-xs text-red-400">
                         +{hand.pot}
                       </span>
                     </div>
@@ -285,7 +298,7 @@ export default function TableDetailPage() {
                   .sort((a, b) => b.stack - a.stack)
                   .map((player, i) => {
                     const netChange = player.stack - 1000
-                    const changeColor = netChange > 0 ? "text-emerald-400" : netChange < 0 ? "text-red-400" : "text-slate-500"
+                    const changeColor = netChange > 0 ? "text-amber-400" : netChange < 0 ? "text-red-400" : "text-slate-500"
                     const changeStr = netChange > 0 ? `+${netChange}` : String(netChange)
                     return (
                       <div key={player.seatId}>
@@ -294,7 +307,7 @@ export default function TableDetailPage() {
                           {player.name.padEnd(14)}
                         </span>
                         <span className="text-slate-600">{"│ "}</span>
-                        <span className="text-emerald-400">{String(player.stack).padEnd(6)}</span>
+                        <span className="text-red-400">{String(player.stack).padEnd(6)}</span>
                         <span className="text-slate-600">{"│ "}</span>
                         <span className={changeColor}>{changeStr.padEnd(7)}</span>
                         <span className="text-slate-600">{"│"}</span>

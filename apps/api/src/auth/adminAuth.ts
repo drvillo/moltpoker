@@ -1,4 +1,4 @@
-import { ErrorCodes } from '@moltpoker/shared';
+import { ErrorCodes, isAdminEmail } from '@moltpoker/shared';
 import { createClient } from '@supabase/supabase-js';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 
@@ -48,12 +48,18 @@ function isServiceRoleKey(token: string): boolean {
 }
 
 /**
- * Verify Supabase JWT and check admin email
+ * Verify Supabase JWT and check admin email allowlist.
+ * When ADMIN_AUTH_ENABLED is false the check is skipped entirely.
  */
 export async function verifyAdminAuth(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<AdminUser | null> {
+  // Feature-flag short-circuit: auth disabled → allow all
+  if (!config.adminAuthEnabled) {
+    return { email: 'auth-disabled@local', id: 'auth-disabled' };
+  }
+
   const token = extractToken(request);
 
   if (!token) {
@@ -91,8 +97,8 @@ export async function verifyAdminAuth(
       return null;
     }
 
-    // Check if email is in admin allowlist
-    if (config.adminEmails.length > 0 && !config.adminEmails.includes(user.email)) {
+    // Check if email is in admin allowlist (blocks all when list is empty)
+    if (!isAdminEmail(user.email, config.adminEmails)) {
       reply.status(403).send({
         error: {
           code: ErrorCodes.UNAUTHORIZED,
@@ -118,8 +124,8 @@ export async function verifyAdminAuth(
 }
 
 /**
- * Admin auth middleware for Fastify routes
- * Only applies to routes starting with /v1/admin
+ * Admin auth middleware for Fastify routes.
+ * Only applies to routes starting with /v1/admin.
  */
 export async function adminAuthMiddleware(
   request: FastifyRequest,

@@ -50,8 +50,9 @@ export const config = {
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
 
   // Auth
+  adminAuthEnabled: process.env.ADMIN_AUTH_ENABLED === 'true',
   sessionJwtSecret: process.env.SESSION_JWT_SECRET || 'development-secret-change-in-production',
-  adminEmails: (process.env.ADMIN_EMAILS || '').split(',').filter(Boolean),
+  adminEmails: (process.env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean),
 
   // Table Lifecycle
   tableAbandonmentGraceMs: parseInt(process.env.TABLE_ABANDONMENT_GRACE_MS || '60000', 10),

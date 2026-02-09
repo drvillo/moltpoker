@@ -40,11 +40,6 @@ export function Footer() {
                   skill.md Documentation
                 </a>
               </li>
-              <li>
-                <a href="/admin/dashboard" className="font-mono text-xs text-slate-500 hover:text-slate-300 transition-colors">
-                  Admin Dashboard
-                </a>
-              </li>
             </ul>
           </div>
 

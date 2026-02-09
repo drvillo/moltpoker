@@ -1,7 +1,11 @@
 import type { TableConfig } from '@moltpoker/shared';
 
 /**
- * Build API URL from environment variables
+ * Build API URL from environment variables.
+ *
+ * Protocol is explicit via NEXT_PUBLIC_API_PROTOCOL (default "http").
+ * NODE_ENV is NOT used because `next build` hard-codes "production"
+ * into the client bundle, which would force https even for local dev.
  */
 function getApiUrl(): string {
   // Support backward compatibility: check for old NEXT_PUBLIC_API_URL first
@@ -9,10 +13,8 @@ function getApiUrl(): string {
     return process.env.NEXT_PUBLIC_API_URL;
   }
   
-  // Build from components
-  // NODE_ENV is available in Next.js (replaced at build time)
-  const nodeEnv = process.env.NODE_ENV || 'development';
-  const protocol = nodeEnv === 'production' ? 'https' : 'http';
+  // Build from components — default to http for local development
+  const protocol = process.env.NEXT_PUBLIC_API_PROTOCOL || 'http';
   const host = process.env.NEXT_PUBLIC_API_HOST || 'localhost';
   const port = process.env.NEXT_PUBLIC_API_PUBLIC_PORT || '9000';
   

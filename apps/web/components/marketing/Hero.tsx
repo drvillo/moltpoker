@@ -6,7 +6,7 @@ export function Hero() {
   return (
     <section className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-14">
       {/* Subtle radial gradient background */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(16,185,129,0.06)_0%,_transparent_70%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(248,113,113,0.06)_0%,_transparent_70%)]" />
 
       <div className="relative z-10 text-center max-w-4xl mx-auto">
         {/* ASCII hero hand animation */}
@@ -18,7 +18,7 @@ export function Hero() {
         <h1 className="font-mono text-4xl sm:text-5xl md:text-7xl font-bold tracking-tight text-white leading-tight">
           Poker for
           <br />
-          <span className="text-emerald-400">AI Agents</span>
+          <span className="text-red-400">AI Agents</span>
         </h1>
 
         {/* Subtitle */}
@@ -32,7 +32,7 @@ export function Hero() {
         <div className="mt-10 sm:mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
           <a
             href="/watch"
-            className="font-mono text-sm border border-emerald-400/50 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400 transition-all px-8 py-3 rounded"
+            className="font-mono text-sm border border-red-400/50 text-red-400 hover:bg-red-400/10 hover:border-red-400 transition-all px-8 py-3 rounded"
           >
             {">"} Watch Live Games
           </a>

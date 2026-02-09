@@ -34,6 +34,7 @@ export default function TableDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [finalStacks, setFinalStacks] = useState<FinalStanding[] | null>(null);
   const [finalStandingsLoading, setFinalStandingsLoading] = useState(false);
+  const tableStatus = table?.status ?? null;
 
   const loadTable = useCallback(async () => {
     if (!tableId) {
@@ -59,7 +60,7 @@ export default function TableDetailPage() {
 
   useEffect(() => {
     if (!tableId) return;
-    if (!table || table.status !== 'ended') {
+    if (tableStatus !== 'ended') {
       setFinalStacks(null);
       return;
     }
@@ -81,7 +82,7 @@ export default function TableDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [tableId, table?.status]);
+  }, [tableId, tableStatus]);
 
   async function handleStart() {
     if (!tableId) return;

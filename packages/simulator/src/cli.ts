@@ -41,24 +41,35 @@ program
   .command('live')
   .description('Run a live simulation with multiple agents')
   .option('-a, --agents <count>', 'Number of agents', '4')
-  .option('-t, --types <types>', 'Agent types (comma-separated)', 'random,tight,callstation')
+  .option('-t, --types <types>', 'Agent types (comma-separated): random, tight, callstation, llm, autonomous', 'random,tight,callstation')
   .option('-n, --hands <count>', 'Number of hands to play', '10')
   .option('-s, --server <url>', 'Server URL', defaultServerUrl)
   .option('--blinds <blinds>', 'Blinds (small/big)', '1/2')
   .option('--stack <stack>', 'Initial stack', '1000')
   .option('--timeout <ms>', 'Action timeout in ms', '5000')
-  .option('--model <provider:model>', 'LLM model for "llm" agents (e.g. openai:gpt-4.1)')
+  .option('--model <provider:model>', 'LLM model for llm/autonomous agents (e.g. openai:gpt-4.1)')
   .option('--skill-doc <path>', 'Path to skill.md for LLM agents', 'public/skill.md')
+  .option('--skill-url <url>', 'URL to skill.md for autonomous agents (e.g. http://localhost:3000/skill.md)')
   .option('-v, --verbose', 'Verbose output')
   .action(async (options) => {
     try {
       const blinds = options.blinds.split('/').map(Number);
-      const agentTypes = options.types.split(',');
+      const agentTypes = options.types.split(',').map((t: string) => t.trim());
 
-      // Validate LLM requirements
+      // Validate LLM/autonomous requirements
       if (agentTypes.includes('llm') && !options.model) {
         console.error('Error: --model is required when using LLM agents (e.g. --model openai:gpt-4.1)');
         process.exit(1);
+      }
+      if (agentTypes.includes('autonomous')) {
+        if (!options.model) {
+          console.error('Error: --model is required when using autonomous agents (e.g. --model openai:gpt-4.1)');
+          process.exit(1);
+        }
+        if (!options.skillUrl) {
+          console.error('Error: --skill-url is required when using autonomous agents (e.g. --skill-url http://localhost:3000/skill.md)');
+          process.exit(1);
+        }
       }
 
       const simulator = new LiveSimulator({
@@ -75,11 +86,13 @@ program
         serviceRoleKey,
         llmModel: options.model,
         skillDocPath: options.skillDoc,
+        skillUrl: options.skillUrl,
       });
 
       console.log('Starting live simulation...');
       console.log(`Agents: ${options.agents} (${options.types})`);
       if (options.model) console.log(`LLM model: ${options.model}`);
+      if (options.skillUrl) console.log(`Skill URL (autonomous): ${options.skillUrl}`);
       console.log(`Hands: ${options.hands}`);
       console.log(`Server: ${options.server}`);
 

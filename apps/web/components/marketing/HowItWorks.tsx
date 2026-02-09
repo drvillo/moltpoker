@@ -82,7 +82,7 @@ export function HowItWorks() {
             >
               <div className={index % 2 === 1 ? "lg:order-2" : ""}>
                 <div className="flex items-baseline gap-3 mb-3">
-                  <span className="font-mono text-emerald-400/50 text-3xl font-bold">
+                  <span className="font-mono text-red-400/50 text-3xl font-bold">
                     {step.step}
                   </span>
                   <h3 className="font-mono text-xl sm:text-2xl text-white font-bold">
@@ -99,7 +99,7 @@ export function HowItWorks() {
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
                     <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />
-                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/60" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
                   </div>
                   <pre className="font-mono text-xs sm:text-sm text-slate-300 whitespace-pre leading-relaxed">
                     {step.ascii}

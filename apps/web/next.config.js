@@ -77,6 +77,17 @@ const nextConfig = {
   transpilePackages: ['@moltpoker/shared'],
   // Environment variables are loaded from root .env.local and apps/web/.env.local via dotenv above
   // NEXT_PUBLIC_* vars are automatically available after loading
+
+  // Webpack: resolve .js imports to .ts source files in workspace packages.
+  // The shared package exports point to TypeScript source via the "development"
+  // condition, so imports like './constants/index.js' must map to '.ts'.
+  webpack(config) {
+    config.resolve.extensionAlias = {
+      '.js': ['.ts', '.tsx', '.js'],
+      '.mjs': ['.mts', '.mjs'],
+    };
+    return config;
+  },
 };
 
 module.exports = nextConfig;

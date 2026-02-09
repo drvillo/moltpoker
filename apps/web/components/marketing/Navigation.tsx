@@ -49,7 +49,7 @@ export function Navigation() {
             </a>
             <a
               href="/skill.md"
-              className="text-emerald-400 hover:text-emerald-300 transition-colors border border-emerald-400/30 rounded px-3 py-1 hover:border-emerald-400/60"
+              className="text-red-400 hover:text-red-300 transition-colors border border-red-400/30 rounded px-3 py-1 hover:border-red-400/60"
             >
               skill.md
             </a>

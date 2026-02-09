@@ -34,13 +34,14 @@ export async function getSession() {
 }
 
 /**
- * Check if user is admin
+ * Check if user is admin.
+ * Admin status is determined server-side in the admin layout
+ * (Supabase session + ADMIN_EMAILS allowlist). Use the useAuth()
+ * hook's `isAdmin` flag on the client instead of calling this.
  */
 export async function isAdmin(): Promise<boolean> {
   const session = await getSession();
   if (!session?.user?.email) return false;
-
-  // Check against ADMIN_EMAILS env var (would need to be exposed via API)
-  // For now, we'll check this on the server side
-  return false; // Will be checked server-side
+  // Server-side check is authoritative; this client helper is informational only
+  return false;
 }

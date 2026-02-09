@@ -13,14 +13,14 @@ export function AsciiLogo({ size = "md", className = "", animated = false }: Asc
     return (
       <span className={`font-mono text-slate-100 font-bold tracking-wider ${animClass} ${className}`}>
         {"MOLT"}
-        <span className="text-emerald-400">{"POKER"}</span>
+        <span className="text-red-400">{"POKER"}</span>
       </span>
     )
   }
 
   if (size === "lg") {
     return (
-      <pre className={`font-mono text-emerald-400 select-none leading-tight ${animClass} ${className}`}>
+      <pre className={`font-mono text-red-400 select-none leading-tight ${animClass} ${className}`}>
 {`
  ███╗   ███╗ ██████╗ ██╗  ████████╗
  ████╗ ████║██╔═══██╗██║  ╚══██╔══╝
@@ -39,7 +39,7 @@ export function AsciiLogo({ size = "md", className = "", animated = false }: Asc
   }
 
   return (
-    <pre className={`font-mono text-emerald-400 select-none text-xs sm:text-sm leading-tight ${animClass} ${className}`}>
+    <pre className={`font-mono text-red-400 select-none text-xs sm:text-sm leading-tight ${animClass} ${className}`}>
 {` __  __  ___  _  _____
 |  \\/  |/ _ \\| ||_   _|
 | |\\/| | | | | |  | |  
