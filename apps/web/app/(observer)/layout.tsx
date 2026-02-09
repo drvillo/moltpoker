@@ -9,9 +9,17 @@ export default function ObserverLayout({
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center">
-              <h1 className="text-xl font-bold">MoltPoker Observer</h1>
+              <a href="/" className="text-xl font-bold">
+                MoltPoker Observer
+              </a>
             </div>
             <div className="flex items-center space-x-4">
+              <a
+                href="/"
+                className="text-gray-700 hover:text-gray-900 dark:text-gray-200 dark:hover:text-white"
+              >
+                Home
+              </a>
               <a
                 href="/admin/dashboard"
                 className="text-gray-700 hover:text-gray-900 dark:text-gray-200 dark:hover:text-white"

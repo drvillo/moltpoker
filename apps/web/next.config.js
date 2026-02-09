@@ -53,7 +53,8 @@ if (dotenv) {
   }
 }
 
-// Verify critical Supabase env vars are loaded
+// Supabase env vars are optional — the marketing homepage works without them.
+// Only the admin and observer routes require Supabase.
 const hasSupabaseUrl = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const hasSupabaseAnonKey = Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
@@ -62,10 +63,10 @@ if (!hasSupabaseUrl || !hasSupabaseAnonKey) {
   if (!hasSupabaseUrl) missing.push('NEXT_PUBLIC_SUPABASE_URL');
   if (!hasSupabaseAnonKey) missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY');
   
-  console.error('\n⚠️  Missing required environment variables:', missing.join(', '));
-  console.error('   Ensure .env.local exists at repo root or apps/web/');
-  console.error('   Loaded env files:', loadedFiles.join(', ') || 'none');
-  console.error('   Restart the dev server after adding the variables.\n');
+  console.warn('\n⚠️  Optional environment variables not set:', missing.join(', '));
+  console.warn('   The marketing homepage will work without them.');
+  console.warn('   Admin and observer features require these variables.');
+  console.warn('   Loaded env files:', loadedFiles.join(', ') || 'none\n');
 }
 
 /** @type {import('next').NextConfig} */
