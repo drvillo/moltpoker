@@ -2,14 +2,17 @@
 
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { useCallback, useEffect, useState } from "react"
 
-import { AsciiLogo, AsciiCardRow, AsciiTableDisplay, AsciiDivider } from "@/components/ascii"
-
-/**
- * Prototype: ASCII-styled table detail view.
- * Shows how the admin table detail page could be redesigned using ASCII art.
- * This is a static prototype using mock data.
- */
+import { AsciiLogo, AsciiCardRow, AsciiTableDisplay, AsciiDivider, StatusBadge } from "@/components/ascii"
+import { publicApi, type PublicTableDetail } from "@/lib/publicApi"
+import {
+  buildReplayData,
+  getHandNumberForIndex,
+  getIndexForHand,
+  type ReplayData,
+  type FinalStanding,
+} from "@/lib/replayState"
 
 const SUIT_MAP: Record<string, string> = {
   s: "♠",
@@ -25,45 +28,6 @@ const SUIT_COLOR: Record<string, string> = {
   c: "text-slate-200",
 }
 
-interface PlayerData {
-  seatId: number
-  name: string
-  stack: number
-  bet: number
-  status: "active" | "folded" | "allIn"
-  holeCards?: Array<{ rank: string; suit: string }>
-  position: string
-}
-
-interface HandHistory {
-  hand: number
-  winner: string
-  pot: number
-  handRank: string
-  communityCards: Array<{ rank: string; suit: string }>
-}
-
-const MOCK_PLAYERS: PlayerData[] = [
-  { seatId: 1, name: "DeepBluff", stack: 2340, bet: 200, status: "active", position: "BTN", holeCards: [{ rank: "A", suit: "h" }, { rank: "K", suit: "h" }] },
-  { seatId: 2, name: "TightBot", stack: 890, bet: 0, status: "folded", position: "SB", holeCards: [{ rank: "7", suit: "c" }, { rank: "2", suit: "d" }] },
-  { seatId: 3, name: "RandomWalk", stack: 1120, bet: 200, status: "active", position: "BB", holeCards: [{ rank: "Q", suit: "s" }, { rank: "J", suit: "s" }] },
-  { seatId: 4, name: "CallStation", stack: 650, bet: 0, status: "allIn", position: "UTG", holeCards: [{ rank: "10", suit: "d" }, { rank: "10", suit: "c" }] },
-]
-
-const MOCK_HANDS: HandHistory[] = [
-  { hand: 47, winner: "DeepBluff", pot: 800, handRank: "Two Pair", communityCards: [{ rank: "K", suit: "h" }, { rank: "7", suit: "d" }, { rank: "2", suit: "s" }, { rank: "J", suit: "c" }] },
-  { hand: 46, winner: "RandomWalk", pot: 450, handRank: "Flush", communityCards: [{ rank: "A", suit: "s" }, { rank: "8", suit: "s" }, { rank: "3", suit: "s" }, { rank: "Q", suit: "d" }, { rank: "6", suit: "s" }] },
-  { hand: 45, winner: "CallStation", pot: 300, handRank: "Three of a Kind", communityCards: [{ rank: "10", suit: "h" }, { rank: "5", suit: "c" }, { rank: "10", suit: "s" }, { rank: "2", suit: "d" }, { rank: "9", suit: "h" }] },
-  { hand: 44, winner: "TightBot", pot: 200, handRank: "High Card", communityCards: [{ rank: "J", suit: "d" }, { rank: "4", suit: "c" }, { rank: "8", suit: "h" }, { rank: "3", suit: "s" }, { rank: "K", suit: "c" }] },
-]
-
-const COMMUNITY_CARDS = [
-  { rank: "K", suit: "h" },
-  { rank: "7", suit: "d" },
-  { rank: "2", suit: "s" },
-  { rank: "J", suit: "c" },
-]
-
 function InlineCard({ rank, suit }: { rank: string; suit: string }) {
   const sym = SUIT_MAP[suit] ?? suit
   const color = SUIT_COLOR[suit] ?? "text-slate-200"
@@ -76,9 +40,134 @@ function InlineCard({ rank, suit }: { rank: string; suit: string }) {
   )
 }
 
+function LoadingState() {
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-slate-300 flex items-center justify-center">
+      <div className="text-center font-mono">
+        <div className="text-slate-500 text-sm animate-pulse">Loading table...</div>
+      </div>
+    </div>
+  )
+}
+
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-slate-300 flex items-center justify-center">
+      <div className="text-center font-mono">
+        <div className="text-red-400/60 text-sm mb-4">{message}</div>
+        <Link href="/tables" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+          Back to tables
+        </Link>
+      </div>
+    </div>
+  )
+}
+
 export default function TableDetailPage() {
   const params = useParams()
-  const tableId = Array.isArray(params?.tableId) ? params?.tableId[0] : params?.tableId
+  const tableId = Array.isArray(params?.tableId) ? params?.tableId[0] : params?.tableId ?? ""
+
+  const [table, setTable] = useState<PublicTableDetail | null>(null)
+  const [replayData, setReplayData] = useState<ReplayData | null>(null)
+  const [finalStacks, setFinalStacks] = useState<FinalStanding[]>([])
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isReplayLoading, setIsReplayLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Load table details
+  useEffect(() => {
+    if (!tableId) return
+    async function loadTable() {
+      try {
+        const data = await publicApi.getTable(tableId)
+        setTable(data)
+      } catch (err) {
+        console.error("Failed to load table:", err)
+        setError("Failed to load table. It may not exist.")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadTable()
+  }, [tableId])
+
+  // Load replay events once table is loaded
+  useEffect(() => {
+    if (!tableId || !table) return
+    // Only load replay for tables that have events (running or ended)
+    if (table.status === "waiting") return
+
+    let cancelled = false
+    async function loadEvents() {
+      setIsReplayLoading(true)
+      try {
+        const allEvents: Awaited<ReturnType<typeof publicApi.getTableEvents>>["events"] = []
+        let fromSeq: number | undefined
+        let hasMore = true
+        while (hasMore) {
+          if (cancelled) return
+          const { events, hasMore: more } = await publicApi.getTableEvents(tableId, {
+            fromSeq,
+            limit: 5000,
+          })
+          allEvents.push(...events)
+          hasMore = more && events.length > 0
+          fromSeq = events.length > 0 ? events[events.length - 1].seq + 1 : undefined
+          if (events.length === 0) break
+        }
+        if (cancelled) return
+        const data = buildReplayData(tableId, allEvents)
+        setReplayData(data)
+        setFinalStacks(data.finalStacks)
+        // Start at the end to show final state
+        if (data.snapshots.length > 0) {
+          setCurrentIndex(data.snapshots.length - 1)
+        }
+      } catch (err) {
+        console.error("Failed to load events:", err)
+      } finally {
+        if (!cancelled) setIsReplayLoading(false)
+      }
+    }
+    loadEvents()
+    return () => { cancelled = true }
+  }, [tableId, table])
+
+  // Navigation callbacks
+  const goToStart = useCallback(() => setCurrentIndex(0), [])
+  const goToPrev = useCallback(
+    () => setCurrentIndex((i) => Math.max(0, i - 1)),
+    []
+  )
+  const goToNext = useCallback(
+    () => setCurrentIndex((i) =>
+      replayData ? Math.min(replayData.snapshots.length - 1, i + 1) : i
+    ),
+    [replayData]
+  )
+  const goToEnd = useCallback(
+    () => setCurrentIndex(replayData ? replayData.snapshots.length - 1 : 0),
+    [replayData]
+  )
+  const goToHand = useCallback(
+    (handNumber: number) => {
+      if (replayData) setCurrentIndex(getIndexForHand(replayData, handNumber))
+    },
+    [replayData]
+  )
+
+  // Keyboard navigation
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "ArrowLeft") goToPrev()
+      else if (e.key === "ArrowRight") goToNext()
+      else if (e.key === "Home") goToStart()
+      else if (e.key === "End") goToEnd()
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [goToPrev, goToNext, goToStart, goToEnd])
 
   if (!tableId) {
     return (
@@ -92,6 +181,19 @@ export default function TableDetailPage() {
       </div>
     )
   }
+
+  if (isLoading) return <LoadingState />
+  if (error || !table) return <ErrorState message={error ?? "Table not found."} />
+
+  const hasReplay = replayData && replayData.snapshots.length > 0
+  const snapshot = hasReplay ? replayData.snapshots[currentIndex] : null
+  const gameState = snapshot?.gameState ?? null
+  const handComplete = snapshot?.handComplete ?? null
+  const currentHand = hasReplay ? getHandNumberForIndex(replayData, currentIndex) : 0
+  const isAtStart = currentIndex === 0
+  const isAtEnd = hasReplay ? currentIndex === replayData.snapshots.length - 1 : true
+
+  const totalPot = gameState?.pots.reduce((sum, p) => sum + p.amount, 0) ?? 0
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-slate-300">
@@ -120,210 +222,444 @@ export default function TableDetailPage() {
           <div>
             <div className="flex items-center gap-3 mb-1">
               <h1 className="font-mono text-2xl sm:text-3xl font-bold text-white">
-                Table Alpha
+                Table
               </h1>
-              <span className="font-mono text-xs text-red-400 border border-red-400/30 rounded px-2 py-0.5">
-                ● LIVE
-              </span>
+              <StatusBadge status={table.status} />
             </div>
             <p className="font-mono text-xs text-slate-500">
-              ID: {tableId} · Hand #47 · Blinds 25/50
+              ID: {tableId}
+              {hasReplay && gameState && <> · Hand #{gameState.handNumber}</>}
+              {" · "}Blinds {table.config.blinds.small}/{table.config.blinds.big}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <a
-              href={`/watch/${tableId}`}
-              className="font-mono text-xs border border-red-400/30 text-red-400 hover:bg-red-400/10 transition-all px-4 py-2 rounded"
-            >
-              Watch Live
-            </a>
-            <button className="font-mono text-xs border border-slate-700 text-slate-400 hover:bg-slate-800 transition-all px-4 py-2 rounded">
-              Export Log
-            </button>
-          </div>
+          <Link
+            href="/tables"
+            className="font-mono text-xs border border-slate-700 text-slate-400 hover:bg-slate-800 transition-all px-4 py-2 rounded self-start"
+          >
+            Back to Tables
+          </Link>
         </div>
+
+        {/* Replay navigation controls */}
+        {hasReplay && (
+          <div className="border border-slate-800 rounded-lg p-3 sm:p-4 bg-slate-900/30 mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* Step controls */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={goToStart}
+                  disabled={isAtStart}
+                  className="font-mono text-xs px-2.5 py-1.5 rounded border border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  ⏮
+                </button>
+                <button
+                  onClick={goToPrev}
+                  disabled={isAtStart}
+                  className="font-mono text-xs px-3 py-1.5 rounded border border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  ◀ Prev
+                </button>
+                <button
+                  onClick={goToNext}
+                  disabled={isAtEnd}
+                  className="font-mono text-xs px-3 py-1.5 rounded border border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Next ▶
+                </button>
+                <button
+                  onClick={goToEnd}
+                  disabled={isAtEnd}
+                  className="font-mono text-xs px-2.5 py-1.5 rounded border border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  ⏭
+                </button>
+              </div>
+
+              {/* Step counter */}
+              <span className="font-mono text-xs text-slate-500">
+                Step {currentIndex + 1} / {replayData.snapshots.length}
+              </span>
+
+              {/* Hand jump */}
+              {replayData.totalHands > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-slate-500">Hand:</span>
+                  <select
+                    value={String(currentHand)}
+                    onChange={(e) => goToHand(Number(e.target.value))}
+                    className="font-mono text-xs bg-slate-900 border border-slate-700 text-slate-300 rounded px-2 py-1.5 focus:outline-none focus:border-red-400/50"
+                  >
+                    {Array.from({ length: replayData.totalHands }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        #{i + 1}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Event description */}
+            {snapshot && (
+              <div className="mt-3 pt-3 border-t border-slate-800/50">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-xs text-slate-600">{snapshot.eventType}</span>
+                  <span className="font-mono text-sm text-slate-300">{snapshot.eventDescription}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Replay loading state */}
+        {isReplayLoading && (
+          <div className="border border-slate-800 rounded-lg p-8 bg-slate-900/30 mb-6 text-center">
+            <span className="font-mono text-sm text-slate-500 animate-pulse">Loading game history...</span>
+          </div>
+        )}
+
+        {/* Waiting state: no replay data */}
+        {table.status === "waiting" && (
+          <div className="border border-slate-800 rounded-lg p-8 bg-slate-900/30 mb-6 text-center">
+            <span className="font-mono text-sm text-amber-400/60">
+              This table is waiting for players. Replay will be available once the game starts.
+            </span>
+          </div>
+        )}
+
+        {/* No events found */}
+        {!isReplayLoading && table.status !== "waiting" && !hasReplay && (
+          <div className="border border-slate-800 rounded-lg p-8 bg-slate-900/30 mb-6 text-center">
+            <span className="font-mono text-sm text-slate-500">No game events found.</span>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main content: table + players */}
           <div className="lg:col-span-2 space-y-6">
             {/* Community cards display */}
-            <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
-              <h2 className="font-mono text-sm text-slate-400 mb-4">Current Hand</h2>
-              <div className="flex justify-center mb-4">
-                <AsciiTableDisplay
-                  communityCards={COMMUNITY_CARDS}
-                  pot={800}
-                  phase="turn"
-                />
+            {hasReplay && gameState && (
+              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+                <h2 className="font-mono text-sm text-slate-400 mb-4">
+                  {gameState.handNumber > 0 ? `Hand #${gameState.handNumber}` : "Game State"}
+                </h2>
+                <div className="flex justify-center mb-4">
+                  <AsciiTableDisplay
+                    communityCards={gameState.communityCards}
+                    pot={totalPot}
+                    phase={gameState.phase}
+                  />
+                </div>
+                {gameState.communityCards.length > 0 && (
+                  <div className="flex justify-center">
+                    <AsciiCardRow cards={gameState.communityCards} size="sm" />
+                  </div>
+                )}
               </div>
-              <div className="flex justify-center">
-                <AsciiCardRow cards={COMMUNITY_CARDS} size="sm" />
-              </div>
-            </div>
+            )}
 
             {/* Players */}
-            <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
-              <h2 className="font-mono text-sm text-slate-400 mb-4">Players</h2>
-              <div className="space-y-3">
-                {MOCK_PLAYERS.map((player) => (
-                  <div
-                    key={player.seatId}
-                    className={`border rounded-lg p-3 sm:p-4 transition-colors ${
-                      player.status === "active"
-                        ? "border-red-400/20 bg-red-400/5"
-                        : player.status === "folded"
-                          ? "border-slate-800 bg-slate-900/20 opacity-60"
-                          : "border-amber-400/20 bg-amber-400/5"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-xs text-slate-500">
-                          S{player.seatId}
-                        </span>
-                        <span className="font-mono text-sm text-white font-bold">
-                          {player.name}
-                        </span>
-                        <span className="font-mono text-xs text-slate-600">
-                          {player.position}
-                        </span>
-                        {player.status === "folded" && (
-                          <span className="font-mono text-xs text-slate-600">[FOLD]</span>
-                        )}
-                        {player.status === "allIn" && (
-                          <span className="font-mono text-xs text-amber-400">[ALL-IN]</span>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <span className="font-mono text-sm text-red-400">{player.stack}</span>
-                        {player.bet > 0 && (
-                          <span className="font-mono text-xs text-amber-400 ml-2">
-                            bet: {player.bet}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+            {hasReplay && gameState && (
+              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+                <h2 className="font-mono text-sm text-slate-400 mb-4">Players</h2>
+                <div className="space-y-3">
+                  {gameState.players.map((player) => {
+                    const isFolded = player.folded
+                    const isAllIn = player.allIn
+                    const isCurrentTurn = player.seatId === gameState.currentSeat
+                    const isDealer = player.seatId === gameState.dealerSeat
 
-                    {/* Hole cards */}
-                    {player.holeCards && (
-                      <div className="flex items-center gap-1 font-mono text-xs">
-                        <span className="text-slate-600">Cards: </span>
-                        {player.holeCards.map((card, i) => (
-                          <InlineCard key={i} rank={card.rank} suit={card.suit} />
-                        ))}
+                    return (
+                      <div
+                        key={player.seatId}
+                        className={`border rounded-lg p-3 sm:p-4 transition-colors ${
+                          isCurrentTurn
+                            ? "border-red-400/30 bg-red-400/5"
+                            : isFolded
+                              ? "border-slate-800 bg-slate-900/20 opacity-60"
+                              : isAllIn
+                                ? "border-amber-400/20 bg-amber-400/5"
+                                : "border-slate-800 bg-slate-900/20"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono text-xs text-slate-500">
+                              S{player.seatId}
+                            </span>
+                            <span className="font-mono text-sm text-white font-bold">
+                              {player.agentName ?? `Seat ${player.seatId}`}
+                            </span>
+                            {isDealer && (
+                              <span className="font-mono text-xs text-amber-400 border border-amber-400/30 rounded px-1">D</span>
+                            )}
+                            {isCurrentTurn && (
+                              <span className="font-mono text-xs text-red-400">[TURN]</span>
+                            )}
+                            {isFolded && (
+                              <span className="font-mono text-xs text-slate-600">[FOLD]</span>
+                            )}
+                            {isAllIn && (
+                              <span className="font-mono text-xs text-amber-400">[ALL-IN]</span>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span className="font-mono text-sm text-red-400">{player.stack}</span>
+                            {player.bet > 0 && (
+                              <span className="font-mono text-xs text-amber-400 ml-2">
+                                bet: {player.bet}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Hole cards */}
+                        {player.holeCards && player.holeCards.length > 0 && (
+                          <div className="flex items-center gap-1 font-mono text-xs">
+                            <span className="text-slate-600">Cards: </span>
+                            {player.holeCards.map((card, i) => (
+                              <InlineCard key={i} rank={card.rank} suit={card.suit} />
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Hand results (when hand is complete) */}
+            {hasReplay && handComplete && (
+              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+                <h2 className="font-mono text-sm text-slate-400 mb-4">Hand Result</h2>
+                <div className="space-y-2">
+                  {handComplete.results.map((r, i) => {
+                    const isWinner = r.winnings > 0
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-center justify-between font-mono text-xs sm:text-sm ${
+                          isWinner ? "text-amber-400" : "text-slate-500"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>Seat {r.seatId}</span>
+                          {r.holeCards && r.holeCards.length > 0 && (
+                            <span className="flex items-center gap-0.5">
+                              {r.holeCards.map((card, ci) => (
+                                <InlineCard key={ci} rank={card.rank} suit={card.suit} />
+                              ))}
+                            </span>
+                          )}
+                          {r.handRank && (
+                            <span className="text-slate-500">({r.handRank})</span>
+                          )}
+                        </div>
+                        <span className={isWinner ? "text-green-400" : "text-slate-600"}>
+                          {isWinner ? `+${r.winnings}` : r.winnings}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Last action (when no hand complete) */}
+            {hasReplay && gameState?.lastAction && !handComplete && (
+              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+                <h2 className="font-mono text-sm text-slate-400 mb-3">Last Action</h2>
+                <div className="font-mono text-xs text-slate-300">
+                  Seat {gameState.lastAction.seatId} - {gameState.lastAction.kind}
+                  {gameState.lastAction.amount !== undefined && ` (${gameState.lastAction.amount})`}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Config */}
-            <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
-              <h2 className="font-mono text-sm text-slate-400 mb-4">Configuration</h2>
-              <div className="font-mono text-xs space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Blinds</span>
-                  <span className="text-slate-300">25 / 50</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Max Seats</span>
-                  <span className="text-slate-300">6</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Initial Stack</span>
-                  <span className="text-slate-300">1,000</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Timeout</span>
-                  <span className="text-slate-300">30,000ms</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Current Hand</span>
-                  <span className="text-slate-300">#47</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Hand history */}
-            <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
-              <h2 className="font-mono text-sm text-slate-400 mb-4">Recent Hands</h2>
-              <div className="space-y-3">
-                {MOCK_HANDS.map((hand) => (
-                  <div
-                    key={hand.hand}
-                    className="border-b border-slate-800/50 pb-3 last:border-0 last:pb-0"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-mono text-xs text-slate-500">
-                        #{hand.hand}
-                      </span>
-                      <span className="font-mono text-xs text-red-400">
-                        +{hand.pot}
-                      </span>
-                    </div>
-                    <div className="font-mono text-xs text-slate-300">
-                      {hand.winner} wins
-                      <span className="text-slate-500"> — {hand.handRank}</span>
-                    </div>
-                    <div className="flex items-center gap-0.5 mt-1 font-mono text-[10px]">
-                      {hand.communityCards.map((card, i) => (
-                        <InlineCard key={i} rank={card.rank} suit={card.suit} />
-                      ))}
-                    </div>
+            {/* Config + Standings: first row, two columns when both exist */}
+            <div
+              className={
+                finalStacks.length > 0
+                  ? "grid grid-cols-1 sm:grid-cols-2 gap-4"
+                  : ""
+              }
+            >
+              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+                <h2 className="font-mono text-sm text-slate-400 mb-4">Configuration</h2>
+                <div className="font-mono text-xs space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Blinds</span>
+                    <span className="text-slate-300">{table.config.blinds.small} / {table.config.blinds.big}</span>
                   </div>
-                ))}
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Max Seats</span>
+                    <span className="text-slate-300">{table.config.maxSeats}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Initial Stack</span>
+                    <span className="text-slate-300">{table.config.initialStack.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Timeout</span>
+                    <span className="text-slate-300">{table.config.actionTimeoutMs.toLocaleString()}ms</span>
+                  </div>
+                  {hasReplay && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Total Hands</span>
+                      <span className="text-slate-300">{replayData.totalHands}</span>
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {finalStacks.length > 0 && (
+                <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+                  <h2 className="font-mono text-sm text-slate-400 mb-4">Standings</h2>
+                  <div className="space-y-2">
+                    {finalStacks.map((standing, i) => {
+                      const name = standing.agentName ?? `Seat ${standing.seatId}`
+                      const isWinner = i === 0
+                      const nameColor = isWinner ? "text-amber-400" : "text-slate-300"
+                      const changeColor = standing.netChange > 0
+                        ? "text-amber-400"
+                        : standing.netChange < 0
+                          ? "text-red-400"
+                          : "text-slate-500"
+                      const changeStr = standing.netChange > 0 ? `+${standing.netChange}` : String(standing.netChange)
+                      return (
+                        <div
+                          key={standing.seatId}
+                          className="flex items-baseline justify-between gap-2 font-mono text-xs min-w-0"
+                        >
+                          <div className="flex items-baseline gap-1.5 min-w-0 shrink">
+                            <span className="text-slate-600 shrink-0 tabular-nums w-4 text-right">
+                              {i + 1}.
+                            </span>
+                            <span className="text-slate-500 shrink-0">S{standing.seatId}</span>
+                            <span className={`${nameColor} truncate`}>{name}</span>
+                            {isWinner && (
+                              <span className="text-amber-400/60 shrink-0">★</span>
+                            )}
+                          </div>
+                          <div className="flex items-baseline gap-2 shrink-0">
+                            <span className="text-red-400 tabular-nums text-right">
+                              {standing.stack.toLocaleString()}
+                            </span>
+                            <span
+                              className={`${changeColor} tabular-nums w-12 text-right`}
+                            >
+                              {changeStr}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Final standings (for ended tables) */}
-            <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
-              <h2 className="font-mono text-sm text-slate-400 mb-4">Standings</h2>
-              <div className="font-mono text-xs select-none">
-                <div className="text-slate-600">{"┌───────────────┬───────┬────────┐"}</div>
-                <div>
-                  <span className="text-slate-600">{"│ "}</span>
-                  <span className="text-slate-400">{"Agent".padEnd(14)}</span>
-                  <span className="text-slate-600">{"│ "}</span>
-                  <span className="text-slate-400">{"Stack".padEnd(6)}</span>
-                  <span className="text-slate-600">{"│ "}</span>
-                  <span className="text-slate-400">{"+/-".padEnd(7)}</span>
-                  <span className="text-slate-600">{"│"}</span>
+            {/* Seats (for waiting tables) */}
+            {table.status === "waiting" && (
+              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+                <h2 className="font-mono text-sm text-slate-400 mb-4">Seats</h2>
+                <div className="font-mono text-xs space-y-2">
+                  {table.seats.map((seat) => (
+                    <div key={seat.seatId} className="flex justify-between">
+                      <span className="text-slate-500">Seat {seat.seatId}</span>
+                      <span className={seat.agentId ? "text-slate-300" : "text-slate-600"}>
+                        {seat.agentName ?? (seat.agentId ? "Agent" : "Empty")}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <div className="text-slate-600">{"├───────────────┼───────┼────────┤"}</div>
-                {MOCK_PLAYERS
-                  .sort((a, b) => b.stack - a.stack)
-                  .map((player, i) => {
-                    const netChange = player.stack - 1000
-                    const changeColor = netChange > 0 ? "text-amber-400" : netChange < 0 ? "text-red-400" : "text-slate-500"
-                    const changeStr = netChange > 0 ? `+${netChange}` : String(netChange)
-                    return (
-                      <div key={player.seatId}>
-                        <span className="text-slate-600">{"│ "}</span>
-                        <span className={i === 0 ? "text-amber-400" : "text-slate-300"}>
-                          {player.name.padEnd(14)}
-                        </span>
-                        <span className="text-slate-600">{"│ "}</span>
-                        <span className="text-red-400">{String(player.stack).padEnd(6)}</span>
-                        <span className="text-slate-600">{"│ "}</span>
-                        <span className={changeColor}>{changeStr.padEnd(7)}</span>
-                        <span className="text-slate-600">{"│"}</span>
-                      </div>
-                    )
-                  })}
-                <div className="text-slate-600">{"└───────────────┴───────┴────────┘"}</div>
               </div>
-            </div>
+            )}
+
+            {/* Recent hand results: sliding window (current hand −4 to current) for contextual navigation */}
+            {hasReplay && replayData.totalHands > 0 && (
+              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+                <h2 className="font-mono text-sm text-slate-400 mb-1">Recent Hands</h2>
+                <p className="font-mono text-[10px] text-slate-600 mb-4">
+                  Showing last 5 · click to jump
+                </p>
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {(() => {
+                    const totalHands = replayData.totalHands
+                    const startHand = Math.max(1, currentHand - 4)
+                    const endHand = currentHand
+                    const handRange = Array.from(
+                      { length: endHand - startHand + 1 },
+                      (_, i) => startHand + i
+                    )
+                    return handRange.map((handNum) => {
+                      const i = handNum - 1
+                      const startIdx = replayData.handStartIndices[i]
+                      const nextHandStart = replayData.handStartIndices[i + 1] ?? replayData.snapshots.length
+                      const completeSnapshot = replayData.snapshots
+                        .slice(startIdx, nextHandStart)
+                        .find((s) => s.eventType === "HAND_COMPLETE")
+
+                      const winners = completeSnapshot?.handComplete?.results.filter((r) => r.winnings > 0) ?? []
+                      const pot = completeSnapshot?.handComplete?.finalPots?.reduce((sum, p) => sum + p.amount, 0) ?? 0
+                      const communityCards = completeSnapshot?.handComplete?.communityCards ?? []
+
+                      return (
+                        <button
+                          key={handNum}
+                          onClick={() => goToHand(handNum)}
+                          className={`w-full text-left border-b border-slate-800/50 pb-3 last:border-0 last:pb-0 hover:bg-slate-800/30 rounded -mx-1 px-1 transition-colors ${
+                            currentHand === handNum ? "bg-slate-800/40" : ""
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-mono text-xs text-slate-500">
+                              #{handNum}
+                            </span>
+                            {pot > 0 && (
+                              <span className="font-mono text-xs text-slate-400" title="Pot size">
+                                pot {pot}
+                              </span>
+                            )}
+                          </div>
+                          {winners.length > 0 && (
+                            <div className="font-mono text-xs text-slate-300">
+                              {winners.map((w) => {
+                                const name = gameState?.players.find((p) => p.seatId === w.seatId)?.agentName ?? `Seat ${w.seatId}`
+                                return name
+                              }).join(", ")}{" "}
+                              wins
+                              {winners[0]?.handRank && (
+                                <span className="text-slate-500"> — {winners[0].handRank}</span>
+                              )}
+                            </div>
+                          )}
+                          {communityCards.length > 0 && (
+                            <div className="flex items-center gap-0.5 mt-1 font-mono text-[10px]">
+                              {communityCards.map((card, ci) => (
+                                <InlineCard key={ci} rank={card.rank} suit={card.suit} />
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         <AsciiDivider className="mt-10 mb-6" />
 
         <div className="text-center font-mono text-xs text-slate-600">
-          {"// This is a design prototype. Connect to a live server to see real data."}
+          {"// Use ← → arrow keys to navigate, Home/End to jump"}
         </div>
       </main>
     </div>

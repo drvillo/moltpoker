@@ -86,6 +86,112 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
   });
 
   /**
+   * GET /v1/tables/:tableId - Get public table details
+   * Returns table info, config, and seat data (no auth required).
+   */
+  fastify.get<{ Params: { tableId: string } }>(
+    '/v1/tables/:tableId',
+    async (request, reply) => {
+      const { tableId } = request.params;
+
+      try {
+        const table = await db.getTable(tableId);
+        if (!table) {
+          return reply.status(404).send({
+            error: {
+              code: ErrorCodes.TABLE_NOT_FOUND,
+              message: 'Table not found',
+            },
+          });
+        }
+
+        const seats = await db.getSeats(tableId);
+        const tableConfig = TableConfigSchema.parse(table.config);
+
+        const seatList: Seat[] = seats.map((s) => ({
+          seatId: s.seat_id,
+          agentId: s.agent_id,
+          agentName: s.agents?.name ?? null,
+          stack: s.stack,
+          isActive: s.is_active,
+        }));
+
+        const availableSeats = seatList.filter((s) => !s.agentId).length;
+        const playerCount = seatList.filter((s) => s.agentId).length;
+
+        return reply.status(200).send({
+          id: table.id,
+          status: table.status,
+          config: tableConfig,
+          seats: seatList,
+          availableSeats,
+          playerCount,
+          created_at: table.created_at,
+        });
+      } catch (err) {
+        fastify.log.error(err, 'Failed to get table details');
+        return reply.status(500).send({
+          error: {
+            code: ErrorCodes.INTERNAL_ERROR,
+            message: 'Failed to get table details',
+          },
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /v1/tables/:tableId/events - Get table events (no auth required)
+   * Query params:
+   *   - fromSeq: Start from this sequence number
+   *   - limit: Max number of events to return (default: 100)
+   */
+  fastify.get<{ Params: { tableId: string }; Querystring: { fromSeq?: string; limit?: string } }>(
+    '/v1/tables/:tableId/events',
+    async (request, reply) => {
+      const { tableId } = request.params;
+      const fromSeq = request.query.fromSeq ? parseInt(request.query.fromSeq, 10) : undefined;
+      const limit = request.query.limit ? parseInt(request.query.limit, 10) : 100;
+
+      try {
+        const table = await db.getTable(tableId);
+        if (!table) {
+          return reply.status(404).send({
+            error: {
+              code: ErrorCodes.TABLE_NOT_FOUND,
+              message: 'Table not found',
+            },
+          });
+        }
+
+        let events = await db.getEvents(tableId, fromSeq);
+        const hasMore = events.length > limit;
+        events = events.slice(0, limit);
+
+        const eventsList = events.map((e) => ({
+          seq: e.seq,
+          type: e.type,
+          payload: e.payload,
+          created_at: e.created_at,
+        }));
+
+        return reply.status(200).send({
+          events: eventsList,
+          hasMore,
+        });
+      } catch (err) {
+        fastify.log.error(err, 'Failed to get table events');
+        return reply.status(500).send({
+          error: {
+            code: ErrorCodes.INTERNAL_ERROR,
+            message: 'Failed to get table events',
+          },
+        });
+      }
+    }
+  );
+
+  /**
    * POST /v1/tables/:tableId/join - Join a table
    */
   fastify.post<{ Params: { tableId: string } }>(
