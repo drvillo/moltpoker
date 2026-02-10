@@ -20,6 +20,7 @@ export default function CreateTablePage() {
     actionTimeoutMs: 30000,
     seed: '',
   });
+  const [bucketKey, setBucketKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -46,6 +47,7 @@ export default function CreateTablePage() {
       const result = await adminApi.createTable({
         config: formData as TableConfig,
         seed: formData.seed || undefined,
+        bucket_key: bucketKey || undefined,
       });
       router.push(`/admin/tables/${result.id}`);
     } catch (err: unknown) {
@@ -190,6 +192,23 @@ export default function CreateTablePage() {
               onChange={(e) => setFormData({ ...formData, seed: e.target.value })}
               className="mt-1"
             />
+          </div>
+
+          <div>
+            <label htmlFor="bucketKey" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Bucket Key (optional)
+            </label>
+            <Input
+              id="bucketKey"
+              type="text"
+              placeholder="default"
+              value={bucketKey}
+              onChange={(e) => setBucketKey(e.target.value)}
+              className="mt-1"
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Tables in the same bucket share a lobby. Leave empty for &quot;default&quot;.
+            </p>
           </div>
 
           {error && (

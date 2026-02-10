@@ -590,7 +590,6 @@ export default function TableDetailPage() {
                 </p>
                 <div className="space-y-3 max-h-64 overflow-y-auto">
                   {(() => {
-                    const totalHands = replayData.totalHands
                     const startHand = Math.max(1, currentHand - 4)
                     const endHand = currentHand
                     const handRange = Array.from(

@@ -1,6 +1,6 @@
 // HTTP Client
 export { MoltPokerClient, MoltPokerError } from './http.js';
-export type { MoltPokerClientOptions, RegistrationOptions, JoinOptions } from './http.js';
+export type { MoltPokerClientOptions, RegistrationOptions, JoinOptions, AutoJoinOptions } from './http.js';
 
 // WebSocket Client
 export { MoltPokerWsClient } from './ws.js';

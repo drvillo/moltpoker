@@ -69,6 +69,7 @@ export const TableListItemSchema = z.object({
   availableSeats: z.number().int().min(0),
   playerCount: z.number().int().min(0),
   created_at: z.coerce.date(),
+  bucket_key: z.string().optional(),
 });
 
 /**

@@ -6,10 +6,11 @@ import { useEffect, useState } from "react"
 import { AsciiLogo, AsciiDivider, AsciiGameCard } from "@/components/ascii"
 import { publicApi, type PublicTableListItem } from "@/lib/publicApi"
 
-type StatusFilter = "all" | "waiting" | "running" | "ended"
+type StatusFilter = "all" | "lobby" | "waiting" | "running" | "ended"
 
 const FILTERS: { label: string; value: StatusFilter }[] = [
   { label: "All", value: "all" },
+  { label: "Lobby", value: "lobby" },
   { label: "Live", value: "running" },
   { label: "Waiting", value: "waiting" },
   { label: "Ended", value: "ended" },
@@ -81,7 +82,9 @@ export default function TablesPage() {
 
   const filteredTables = filter === "all"
     ? tables
-    : tables.filter((t) => t.status === filter)
+    : filter === "lobby"
+      ? tables.filter((t) => t.status === "waiting" && t.availableSeats > 0)
+      : tables.filter((t) => t.status === filter)
 
   const countLabel = filter === "all"
     ? `${filteredTables.length} game${filteredTables.length !== 1 ? "s" : ""}`

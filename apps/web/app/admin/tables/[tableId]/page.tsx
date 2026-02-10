@@ -24,6 +24,7 @@ interface TableDetail {
   }>;
   current_hand_number: number | null;
   created_at: string;
+  bucket_key?: string;
 }
 
 export default function TableDetailPage() {
@@ -190,6 +191,10 @@ export default function TableDetailPage() {
             <div>
               <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Action Timeout</dt>
               <dd className="text-sm">{table.config.actionTimeoutMs}ms</dd>
+            </div>
+            <div>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Bucket</dt>
+              <dd className="text-sm font-mono">{table.bucket_key ?? 'default'}</dd>
             </div>
             {table.current_hand_number !== null && (
               <div>

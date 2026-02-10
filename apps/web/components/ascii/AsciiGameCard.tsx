@@ -2,8 +2,10 @@
 
 import Link from "next/link"
 
-import { StatusBadge } from "./StatusBadge"
 import type { PublicTableListItem } from "@/lib/publicApi"
+
+import { LobbyBadge } from "./LobbyBadge"
+import { StatusBadge } from "./StatusBadge"
 
 interface AsciiGameCardProps {
   table: PublicTableListItem
@@ -120,6 +122,15 @@ export function AsciiGameCard({ table, className = "" }: AsciiGameCardProps) {
         <span>{blindsStr}</span>
         <span className="text-slate-700">·</span>
         <span>{playersStr} players</span>
+        {table.bucket_key && table.status === "waiting" && (
+          <>
+            <span className="text-slate-700">·</span>
+            <LobbyBadge
+              bucketKey={table.bucket_key}
+              isActiveLobby={table.availableSeats > 0}
+            />
+          </>
+        )}
       </div>
 
       {/* ASCII separator */}
@@ -133,7 +144,16 @@ export function AsciiGameCard({ table, className = "" }: AsciiGameCardProps) {
         <div className="text-xs text-red-400/60">Game in progress...</div>
       )}
       {table.status === "waiting" && (
-        <div className="text-xs text-amber-400/60">Waiting for players...</div>
+        <>
+          <div className="text-xs text-amber-400/60">Waiting for players...</div>
+          {table.availableSeats > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-800/50">
+              <p className="font-mono text-xs text-slate-500">
+                Ready to join · Use auto-join endpoint
+              </p>
+            </div>
+          )}
+        </>
       )}
     </Link>
   )

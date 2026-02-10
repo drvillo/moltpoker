@@ -6,6 +6,7 @@ import { config } from './config.js';
 import * as db from './db.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerAgentRoutes } from './routes/agents.js';
+import { registerAutoJoinRoutes } from './routes/autoJoin.js';
 import { registerSkillRoutes } from './routes/skill.js';
 import { registerTableRoutes } from './routes/tables.js';
 import { registerWebSocketRoutes } from './ws/connectionHandler.js';
@@ -64,6 +65,7 @@ async function main() {
   // Register routes
   registerAgentRoutes(app);
   registerTableRoutes(app);
+  registerAutoJoinRoutes(app);
   registerAdminRoutes(app);
   registerSkillRoutes(app);
   registerWebSocketRoutes(app);

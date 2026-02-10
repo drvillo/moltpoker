@@ -20,6 +20,8 @@ export interface LiveSimulatorOptions {
   skillDocPath?: string;
   /** URL to skill.md for autonomous agents (e.g. "http://localhost:3000/skill.md") */
   skillUrl?: string;
+  /** Use auto-join instead of admin table creation (default: true) */
+  useAutoJoin?: boolean;
 }
 
 export interface LiveSimulatorResult {
@@ -66,7 +68,56 @@ export class LiveSimulator {
   async run(): Promise<LiveSimulatorResult> {
     const startTime = Date.now();
     const errors: string[] = [];
+    const useAutoJoin = this.options.useAutoJoin !== false;
 
+    if (useAutoJoin) {
+      return this.runWithAutoJoin(startTime, errors);
+    }
+    return this.runWithAdminCreate(startTime, errors);
+  }
+
+  /**
+   * Run simulation using auto-join (agents self-organize)
+   */
+  private async runWithAutoJoin(startTime: number, errors: string[]): Promise<LiveSimulatorResult> {
+    if (this.options.verbose) {
+      console.log('Using auto-join mode: agents will self-organize');
+    }
+
+    // Spawn agents without a table ID (they will auto-join)
+    for (let i = 0; i < this.options.agentCount; i++) {
+      const agentType = this.options.agentTypes[i % this.options.agentTypes.length]!;
+      await this.spawnAgent(null, agentType, i);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    if (this.options.verbose) {
+      console.log(`Spawned ${this.options.agentCount} agents, waiting for auto-join and auto-start...`);
+    }
+
+    // Wait for agents to finish (they should auto-start when enough join)
+    // Use a timeout-based approach since we don't have a table ID up front
+    await new Promise((resolve) => setTimeout(resolve, this.options.handsToPlay * 15000 + 10000));
+
+    // Kill agent processes
+    for (const proc of this.processes) {
+      proc.kill('SIGTERM');
+    }
+
+    const duration = Date.now() - startTime;
+
+    return {
+      handsPlayed: this.options.handsToPlay,
+      duration,
+      agentResults: [],
+      errors,
+    };
+  }
+
+  /**
+   * Run simulation using admin table creation (traditional flow)
+   */
+  private async runWithAdminCreate(startTime: number, errors: string[]): Promise<LiveSimulatorResult> {
     // Create a table via admin API
     const tableResponse = await fetch(`${this.options.serverUrl}/v1/admin/tables`, {
       method: 'POST',
@@ -200,14 +251,18 @@ export class LiveSimulator {
   /**
    * Spawn an agent process
    */
-  private async spawnAgent(tableId: string, agentType: string, index: number): Promise<void> {
+  private async spawnAgent(tableId: string | null, agentType: string, index: number): Promise<void> {
     const args = [
       'packages/agents/dist/runner.js',
       '--type', agentType,
       '--server', this.options.serverUrl,
-      '--table-id', tableId,
       '--name', `${agentType}-${index}`,
     ];
+
+    // Only pass --table-id if explicitly provided (otherwise agent uses auto-join)
+    if (tableId) {
+      args.push('--table-id', tableId);
+    }
 
     // LLM agents need --model and --skill-doc
     if (agentType === 'llm') {

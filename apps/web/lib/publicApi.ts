@@ -42,6 +42,7 @@ export interface PublicTableListItem {
   availableSeats: number
   playerCount: number
   created_at: string
+  bucket_key?: string
 }
 
 export interface PublicTableDetail {
@@ -52,6 +53,7 @@ export interface PublicTableDetail {
   availableSeats: number
   playerCount: number
   created_at: string
+  bucket_key?: string
 }
 
 export interface PublicTableEvent {

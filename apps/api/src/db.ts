@@ -74,12 +74,49 @@ export async function updateAgentLastSeen(agentId: string) {
 export async function createTable(
   id: string,
   configData: Record<string, unknown>,
+  seed: string | null = null,
+  bucketKey: string = 'default'
+) {
+  const { data, error } = await getDb()
+    .from('tables')
+    .insert({
+      id,
+      status: 'waiting',
+      config: configData,
+      seed,
+      bucket_key: bucketKey,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function findWaitingTableInBucket(bucketKey: string) {
+  const { data, error } = await getDb()
+    .from('tables')
+    .select()
+    .eq('bucket_key', bucketKey)
+    .eq('status', 'waiting')
+    .limit(1)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
+export async function createTableWithBucket(
+  id: string,
+  bucketKey: string,
+  configData: Record<string, unknown>,
   seed: string | null = null
 ) {
   const { data, error } = await getDb()
     .from('tables')
     .insert({
       id,
+      bucket_key: bucketKey,
       status: 'waiting',
       config: configData,
       seed,

@@ -28,6 +28,10 @@ import {
   TableStartedEventPayloadSchema,
 } from '../schemas/events.js';
 import {
+  AutoJoinRequestSchema,
+  AutoJoinResponseSchema,
+} from '../schemas/autoJoin.js';
+import {
   JoinRequestSchema,
   JoinResponseSchema,
   LeaveRequestSchema,
@@ -84,6 +88,10 @@ export type JoinRequest = z.infer<typeof JoinRequestSchema>;
 export type JoinResponse = z.infer<typeof JoinResponseSchema>;
 export type LeaveRequest = z.infer<typeof LeaveRequestSchema>;
 export type LeaveResponse = z.infer<typeof LeaveResponseSchema>;
+
+// Auto-join types
+export type AutoJoinRequest = z.infer<typeof AutoJoinRequestSchema>;
+export type AutoJoinResponse = z.infer<typeof AutoJoinResponseSchema>;
 
 // Action types
 export type ActionKind = z.infer<typeof ActionKindSchema>;

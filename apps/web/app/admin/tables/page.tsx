@@ -13,6 +13,7 @@ interface Table {
   status: string;
   config: unknown;
   created_at: string;
+  bucket_key?: string;
 }
 
 export default function TablesPage() {
@@ -87,6 +88,7 @@ export default function TablesPage() {
               <tr className="border-b dark:border-gray-700">
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">ID</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Status</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Bucket</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Created</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-700 dark:text-gray-300">Actions</th>
               </tr>
@@ -96,6 +98,9 @@ export default function TablesPage() {
                 <tr key={table.id} className="border-b dark:border-gray-700">
                   <td className="px-4 py-3 font-mono text-sm">{table.id}</td>
                   <td className="px-4 py-3">{getStatusBadge(table.status)}</td>
+                  <td className="px-4 py-3 font-mono text-sm text-gray-500 dark:text-gray-400">
+                    {table.bucket_key ?? 'default'}
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                     {new Date(table.created_at).toLocaleString()}
                   </td>

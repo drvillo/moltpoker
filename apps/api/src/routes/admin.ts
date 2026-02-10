@@ -34,12 +34,13 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
     }
 
     const { config: tableConfig, seed } = parseResult.data;
+    const bucketKey = (request.body as Record<string, unknown>)?.bucket_key as string | undefined;
     const finalConfig = TableConfigSchema.parse(tableConfig || {});
 
     const tableId = generateTableId();
 
     try {
-      await db.createTable(tableId, finalConfig as unknown as Record<string, unknown>, seed ?? null);
+      await db.createTable(tableId, finalConfig as unknown as Record<string, unknown>, seed ?? null, bucketKey || 'default');
       await db.createSeats(tableId, finalConfig.maxSeats);
       const seats = await db.getSeats(tableId);
       const seatList: Seat[] = seats.map((s) => ({
@@ -427,6 +428,7 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
           seats: seatList,
           current_hand_number: currentHandNumber,
           created_at: table.created_at,
+          bucket_key: table.bucket_key ?? 'default',
         });
       } catch (err) {
         fastify.log.error(err, 'Failed to get table details');

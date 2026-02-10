@@ -8,7 +8,7 @@ import {
   type Seat,
   type TableListItem,
 } from '@moltpoker/shared';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyBaseLogger } from 'fastify';
 
 
 import { apiKeyAuth } from '../auth/apiKey.js';
@@ -19,6 +19,76 @@ import { tableManager } from '../table/manager.js';
 import { startTableRuntime } from '../table/startTable.js';
 import { generateSessionId } from '../utils/crypto.js';
 import { broadcastManager } from '../ws/broadcastManager.js';
+
+/**
+ * Assign a seat to an agent and create a session.
+ * Reusable helper shared between /join and /auto-join endpoints.
+ */
+export async function assignSeatAndCreateSession(
+  tableId: string,
+  agentId: string,
+  agentName: string | null,
+  tableConfig: ReturnType<typeof TableConfigSchema.parse>,
+  options: { preferredSeat?: number } = {}
+): Promise<{ seatId: number; sessionToken: string } | { error: { code: string; message: string; statusCode: number } }> {
+  // Check if agent is already seated
+  const existingSeat = await db.getSeatByAgentId(tableId, agentId)
+  if (existingSeat) {
+    return { error: { code: ErrorCodes.ALREADY_SEATED, message: 'You are already seated at this table', statusCode: 400 } }
+  }
+
+  // Find available seat
+  const availableSeat = await db.findAvailableSeat(tableId, options.preferredSeat)
+  if (!availableSeat) {
+    return { error: { code: ErrorCodes.TABLE_FULL, message: 'No available seats at this table', statusCode: 400 } }
+  }
+
+  const seatId = availableSeat.seat_id
+
+  // Assign seat
+  await db.assignSeat(tableId, seatId, agentId, tableConfig.initialStack)
+
+  // Create session
+  const sessionId = generateSessionId()
+  const expiresAt = new Date(Date.now() + SESSION_EXPIRATION_SECONDS * 1000)
+  await db.createSession(sessionId, agentId, tableId, seatId, expiresAt)
+
+  // Generate session token
+  const sessionToken = generateSessionToken(sessionId, agentId, tableId, seatId)
+
+  // Add player to runtime if table is already running
+  const managedTable = tableManager.get(tableId)
+  if (managedTable) {
+    managedTable.runtime.addPlayer(seatId, agentId, agentName, tableConfig.initialStack)
+    broadcastManager.broadcastPlayerJoined(tableId, seatId, agentId, agentName, tableConfig.initialStack)
+  }
+
+  return { seatId, sessionToken }
+}
+
+/**
+ * Check if a waiting table has enough players to auto-start, and start it if so.
+ * Returns true if the table was started.
+ */
+export async function checkAndAutoStart(
+  tableId: string,
+  tableConfig: ReturnType<typeof TableConfigSchema.parse>,
+  log?: FastifyBaseLogger
+): Promise<boolean> {
+  const allSeats = await db.getSeats(tableId)
+  const seatedCount = allSeats.filter((s) => s.agent_id).length
+
+  if (seatedCount >= tableConfig.minPlayersToStart) {
+    try {
+      await startTableRuntime(tableId)
+      return true
+    } catch (startErr) {
+      log?.error(startErr, 'Auto-start failed after join')
+      return false
+    }
+  }
+  return false
+}
 
 export function registerTableRoutes(fastify: FastifyInstance): void {
   /**
@@ -67,6 +137,7 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
           availableSeats,
           playerCount,
           created_at: new Date(table.created_at),
+          bucket_key: table.bucket_key ?? 'default',
         });
       }
 
@@ -127,6 +198,7 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
           availableSeats,
           playerCount,
           created_at: table.created_at,
+          bucket_key: table.bucket_key ?? 'default',
         });
       } catch (err) {
         fastify.log.error(err, 'Failed to get table details');
@@ -256,68 +328,24 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
           });
         }
 
-        // Check if agent is already seated
-        const existingSeat = await db.getSeatByAgentId(tableId, agentId);
-        if (existingSeat) {
-          return reply.status(400).send({
-            error: {
-              code: ErrorCodes.ALREADY_SEATED,
-              message: 'You are already seated at this table',
-            },
-          });
-        }
-
-        // Find available seat
-        const availableSeat = await db.findAvailableSeat(tableId, preferred_seat);
-        if (!availableSeat) {
-          return reply.status(400).send({
-            error: {
-              code: ErrorCodes.TABLE_FULL,
-              message: 'No available seats at this table',
-            },
-          });
-        }
-
         const tableConfig = TableConfigSchema.parse(table.config);
-        const seatId = availableSeat.seat_id;
 
-        // Assign seat
-        await db.assignSeat(tableId, seatId, agentId, tableConfig.initialStack);
+        // Assign seat and create session
+        const result = await assignSeatAndCreateSession(
+          tableId, agentId, agentName, tableConfig, { preferredSeat: preferred_seat }
+        );
 
-        // Create session
-        const sessionId = generateSessionId();
-        const expiresAt = new Date(Date.now() + SESSION_EXPIRATION_SECONDS * 1000);
-        await db.createSession(sessionId, agentId, tableId, seatId, expiresAt);
+        if ('error' in result) {
+          return reply.status(result.error.statusCode).send({
+            error: { code: result.error.code, message: result.error.message },
+          });
+        }
 
-        // Generate session token
-        const sessionToken = generateSessionToken(sessionId, agentId, tableId, seatId);
+        const { seatId, sessionToken } = result;
 
-        // Add player to runtime if table is already running
-        const managedTable = tableManager.get(tableId);
-        if (managedTable) {
-          managedTable.runtime.addPlayer(seatId, agentId, agentName, tableConfig.initialStack);
-
-          // Broadcast player joined
-          broadcastManager.broadcastPlayerJoined(
-            tableId,
-            seatId,
-            agentId,
-            agentName,
-            tableConfig.initialStack
-          );
-        } else if (table.status === 'waiting') {
-          // Auto-start if we have enough players
-          const allSeats = await db.getSeats(tableId);
-          const seatedCount = allSeats.filter((s) => s.agent_id).length;
-
-          if (seatedCount >= tableConfig.minPlayersToStart) {
-            try {
-              await startTableRuntime(tableId);
-            } catch (startErr) {
-              fastify.log.error(startErr, 'Auto-start failed after join');
-              // Non-fatal: the agent is seated, they can connect WS and wait
-            }
-          }
+        // Auto-start if waiting and enough players
+        if (table.status === 'waiting' && !tableManager.has(tableId)) {
+          await checkAndAutoStart(tableId, tableConfig, fastify.log);
         }
 
         return reply.status(200).send({

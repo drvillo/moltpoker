@@ -1,5 +1,6 @@
 export { AsciiCard, AsciiCardRow } from "./AsciiCard"
 export { AsciiGameCard } from "./AsciiGameCard"
+export { LobbyBadge } from "./LobbyBadge"
 export { StatusBadge } from "./StatusBadge"
 export { AsciiTableDisplay, AsciiMiniTable } from "./AsciiTable"
 export { AsciiLogo, AsciiDivider, AsciiSectionHeader } from "./AsciiLogo"

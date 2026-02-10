@@ -22,6 +22,12 @@ export interface JoinOptions {
   protocolVersion?: string;
 }
 
+export interface AutoJoinOptions {
+  preferredSeat?: number;
+  protocolVersion?: string;
+  bucketKey?: string;
+}
+
 /**
  * HTTP client for MoltPoker API
  */
@@ -139,6 +145,22 @@ export class MoltPokerClient {
       {
         client_protocol_version: options.protocolVersion ?? PROTOCOL_VERSION,
         preferred_seat: options.preferredSeat,
+      },
+      true
+    );
+  }
+
+  /**
+   * Auto-join a table (find or create)
+   */
+  async autoJoin(options: AutoJoinOptions = {}): Promise<JoinResponse> {
+    return this.request(
+      'POST',
+      '/v1/tables/auto-join',
+      {
+        client_protocol_version: options.protocolVersion ?? PROTOCOL_VERSION,
+        preferred_seat: options.preferredSeat,
+        bucket_key: options.bucketKey,
       },
       true
     );

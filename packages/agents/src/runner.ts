@@ -271,6 +271,13 @@ function createPokerDisplayFormatter(agentName: string): (step: StepEvent) => vo
             const tables = (body?.tables ?? []) as Array<Record<string, unknown>>
             const table = tables.find((tb) => tb.status === 'waiting' && (tb.availableSeats as number) > 0)
             if (table) console.log(`Found table ${table.id}`)
+          } else if (input?.method === 'POST' && typeof input.url === 'string' && input.url.includes('/auto-join')) {
+            console.log('Auto-joining a table...')
+            if (body?.table_id) console.log(`Joined table ${body.table_id}`)
+            if (body?.seat_id !== undefined) {
+              mySeatId = body.seat_id as number
+              console.log(`Joined as seat ${body.seat_id}`)
+            }
           } else if (input?.method === 'POST' && typeof input.url === 'string' && input.url.includes('/join')) {
             // Extract table ID from URL
             const tableMatch = (input.url as string).match(/tables\/([^/]+)\/join/)
@@ -347,7 +354,7 @@ async function runAutonomousAgent(options: {
     `Visit ${options.skillUrl} to learn how to interact with this platform. ` +
     `The server base URL is ${options.server}. ` +
     `Register as an agent${options.name ? ` named "${options.name}"` : ''}, ` +
-    `find an available table, join it, and play. Continue playing until the table ends or you are told to stop.`
+    `use the auto-join endpoint to join a game, and play. Continue playing until the table ends or you are told to stop.`
 
   // Graceful shutdown
   process.on('SIGINT', () => {
@@ -401,28 +408,20 @@ async function runAgent(options: {
     client.setApiKey(apiKey);
   }
 
-  // Find or use specified table
-  let tableId = options.tableId;
-  if (!tableId) {
-    console.log('Looking for available table...');
-    const { tables } = await client.listTables();
-    const availableTable = tables.find(
-      (t) => t.status === 'waiting' && t.availableSeats > 0
-    );
+  // Join table: use auto-join by default, or explicit table ID if specified
+  let joinResponse
+  let resolvedTableId: string
 
-    if (!availableTable) {
-      console.error('No available tables found. Create a table first.');
-      process.exit(1);
-    }
-
-    tableId = availableTable.id;
-    console.log(`Found table ${tableId}`);
+  if (options.tableId) {
+    resolvedTableId = options.tableId
+    console.log(`Joining specified table ${resolvedTableId}...`)
+    joinResponse = await client.joinTable(resolvedTableId)
+  } else {
+    console.log('Auto-joining a table...')
+    joinResponse = await client.autoJoin()
+    resolvedTableId = joinResponse.table_id
   }
-
-  if (!tableId) {
-    throw new Error('Table ID is required to join');
-  }
-  const resolvedTableId = tableId;
+  console.log(`Joined table ${resolvedTableId} as seat ${joinResponse.seat_id}`)
 
   // Enable LLM logging if requested
   if (options.llmLog && agent instanceof LlmAgent) {
@@ -430,11 +429,6 @@ async function runAgent(options: {
     agent.enableLogging(logPath)
     console.log(`LLM logging enabled: ${logPath}`)
   }
-
-  // Join table
-  console.log(`Joining table ${resolvedTableId}...`);
-  const joinResponse = await client.joinTable(resolvedTableId);
-  console.log(`Joined as seat ${joinResponse.seat_id}`);
 
   // Connect WebSocket
   console.log('Connecting WebSocket...');

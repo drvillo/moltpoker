@@ -127,6 +127,7 @@ export const adminApi = {
       }>;
       current_hand_number: number | null;
       created_at: string;
+      bucket_key: string;
     }>(`/v1/admin/tables/${tableId}`);
   },
 
@@ -140,6 +141,7 @@ export const adminApi = {
       status: string;
       config: unknown;
       created_at: Date;
+      bucket_key?: string;
     }> }>(`/v1/tables${query}`);
     return response.tables.map(t => ({ ...t, created_at: new Date(t.created_at).toISOString() }));
   },
@@ -147,7 +149,7 @@ export const adminApi = {
   /**
    * Create table
    */
-  async createTable(data: { config?: TableConfig; seed?: string }) {
+  async createTable(data: { config?: TableConfig; seed?: string; bucket_key?: string }) {
     return apiRequest<{
       id: string;
       status: string;
