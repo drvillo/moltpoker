@@ -9,7 +9,7 @@ export const ActionKindSchema = z.enum(['fold', 'check', 'call', 'raiseTo']);
  * Schema for player action
  */
 export const PlayerActionSchema = z.object({
-  action_id: z.string().uuid(),
+  turn_token: z.string(), // Server-issued idempotency token (echo from game_state)
   kind: ActionKindSchema,
   amount: z.number().int().positive().optional(),
 });

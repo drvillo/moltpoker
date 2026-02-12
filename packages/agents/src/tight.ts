@@ -1,6 +1,6 @@
 import type { Card, GameStatePayload, LegalAction, PlayerAction } from '@moltpoker/shared';
 
-import { createActionId, type PokerAgent } from './types.js';
+import { createAction, type PokerAgent } from './types.js';
 import { logAgentHandComplete, logAgentError } from './utils/output.js';
 
 /**
@@ -24,7 +24,7 @@ export class TightAgent implements PokerAgent {
     // Check if we can check (free action)
     const canCheck = legalActions.some((a) => a.kind === 'check');
     if (canCheck) {
-      return { action_id: createActionId(), kind: 'check' };
+      return createAction('check', state);
     }
 
     // Evaluate hand strength
@@ -38,20 +38,16 @@ export class TightAgent implements PokerAgent {
     if (state.phase === 'preflop') {
       if (handStrength >= 0.8 && raiseAction) {
         // Premium hand - raise
-        return {
-          action_id: createActionId(),
-          kind: 'raiseTo',
-          amount: raiseAction.minAmount,
-        };
+        return createAction('raiseTo', state, raiseAction.minAmount);
       }
 
       if (handStrength >= 0.5 && callAction) {
         // Decent hand - call
-        return { action_id: createActionId(), kind: 'call' };
+        return createAction('call', state);
       }
 
       // Weak hand - fold
-      return { action_id: createActionId(), kind: 'fold' };
+      return createAction('fold', state);
     }
 
     // Post-flop: be more conservative
@@ -59,11 +55,11 @@ export class TightAgent implements PokerAgent {
 
     if (potOdds < 0.2 && callAction) {
       // Good pot odds - call
-      return { action_id: createActionId(), kind: 'call' };
+      return createAction('call', state);
     }
 
     // Default to fold
-    return { action_id: createActionId(), kind: 'fold' };
+    return createAction('fold', state);
   }
 
   /**

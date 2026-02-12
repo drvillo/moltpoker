@@ -20,8 +20,14 @@ export interface PokerAgent {
 }
 
 /**
- * Create a unique action ID
+ * Create a PlayerAction using the server-issued turn_token from the game state.
  */
-export function createActionId(): string {
-  return crypto.randomUUID();
+export function createAction(
+  kind: PlayerAction['kind'],
+  state: GameStatePayload,
+  amount?: number,
+): PlayerAction {
+  const action: PlayerAction = { turn_token: state.turn_token!, kind }
+  if (amount !== undefined) action.amount = amount
+  return action
 }

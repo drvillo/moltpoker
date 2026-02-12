@@ -1,5 +1,5 @@
 // Agent types
-export { type PokerAgent, createActionId } from './types.js';
+export { type PokerAgent, createAction } from './types.js';
 
 // Reference agents
 export { RandomAgent } from './random.js';

@@ -48,7 +48,7 @@ export function AsciiTableDisplay({
         {"║"}
         <span className="text-slate-500">
           {"          "}
-          <span className="text-amber-400/70">{phase.toUpperCase().padEnd(10)}</span>
+          <span className="text-amber-400/70 transition-all duration-300">{phase.toUpperCase().padEnd(10)}</span>
           {"              "}
         </span>
         {"║"}
@@ -58,7 +58,7 @@ export function AsciiTableDisplay({
         {filledCards.map((card, i) => {
           const { text, color } = formatCard(card)
           return (
-            <span key={i}>
+            <span key={i} className="transition-opacity duration-300">
               <span className="text-slate-500">{"["}</span>
               <span className={color}>{text.padEnd(3)}</span>
               <span className="text-slate-500">{"]"}</span>
@@ -78,7 +78,7 @@ export function AsciiTableDisplay({
         {"║"}
         <span className="text-slate-500">
           {"          Pot: "}
-          <span className="text-red-400">{pot.toLocaleString().padEnd(10)}</span>
+          <span className="text-red-400 transition-all duration-300 tabular-nums">{pot.toLocaleString().padEnd(10)}</span>
           {"        "}
         </span>
         {"║"}

@@ -196,7 +196,7 @@ function createPokerDisplayFormatter(agentName: string): (step: StepEvent) => vo
       }
 
       case 'ack':
-        console.log(`Action ${payload.action_id ?? payload.actionId} acknowledged (seq: ${payload.seq ?? msgRecord.seq})`)
+        console.log(`Action acknowledged (turn_token: ${payload.turn_token}, seq: ${payload.seq ?? msgRecord.seq})`)
         break
 
       case 'error':
@@ -341,19 +341,25 @@ async function runAutonomousAgent(options: {
       (options.skillDoc ? ' (did you mean --skill-url instead of --skill-doc?)' : ''))
 
   const model = await resolveModel(options.model)
-  const agentName = options.name ?? 'AutonomousAgent'
 
   const logPath = options.llmLog
     ? join(process.cwd(), 'logs', `autonomous-${Date.now()}.jsonl`)
     : undefined
 
-  const onStep = createPokerDisplayFormatter(agentName)
+  // Create a temporary agent to get the generated name with model ID
+  const tempAgent = new AutonomousAgent({ model, temperature: 0.3 })
+  
+  // Use custom name if provided, otherwise use the agent's generated name (which includes model ID)
+  const displayName = options.name ?? tempAgent.name
+  const onStep = createPokerDisplayFormatter(displayName)
+  
+  // Create the actual agent with the onStep callback
   const agent = new AutonomousAgent({ model, temperature: 0.3, logPath, onStep })
 
   const task =
     `Visit ${options.skillUrl} to learn how to interact with this platform. ` +
     `The server base URL is ${options.server}. ` +
-    `Register as an agent${options.name ? ` named "${options.name}"` : ''}, ` +
+    `Register as an agent${options.name ? ` named "${options.name}"` : ` named "${displayName}"`}, ` +
     `use the auto-join endpoint to join a game, and play. Continue playing until the table ends or you are told to stop.`
 
   // Graceful shutdown
@@ -362,7 +368,7 @@ async function runAutonomousAgent(options: {
     agent.stop()
   })
 
-  console.log(`Starting ${agentName}...`)
+  console.log(`Starting ${displayName}...`)
   if (logPath) console.log(`Logging to: ${logPath}`)
   console.log('Agent running. Press Ctrl+C to stop.')
   await agent.run(task)
@@ -527,7 +533,7 @@ async function runAgent(options: {
 
   // Handle ack
   ws.on('ack', (payload) => {
-    console.log(`Action ${payload.action_id} acknowledged (seq: ${payload.seq})`);
+    console.log(`Action acknowledged (turn_token: ${payload.turn_token}, seq: ${payload.seq})`);
   });
 
   // Handle errors -- retry on INVALID_ACTION if retries remain

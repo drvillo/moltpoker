@@ -57,6 +57,7 @@ function makeGameState(overrides?: Partial<GameStatePayload>): GameStatePayload 
     ],
     toCall: 0,
     seq: 42,
+    turn_token: 'test-turn-token-123',
     ...overrides,
   }
 }
@@ -266,21 +267,25 @@ describe('LlmAgent', () => {
     }).toThrow('Skill doc not found')
   })
 
-  it('should load skill.md as system prompt', () => {
+  it('should load skill.md as system prompt and include model ID in name', () => {
     const agent = new LlmAgent({
       model: mockModel({ reasoning: 'test', kind: 'fold' }),
       skillDocPath,
     })
-    expect(agent.name).toBe('LlmAgent')
+    expect(agent.name).toContain('LlmAgent')
+    expect(agent.name).toContain('(')
+    expect(agent.name).toContain(')')
   })
 
-  it('should accept a custom name', () => {
+  it('should accept a custom name and include model ID', () => {
     const agent = new LlmAgent({
       model: mockModel({ reasoning: 'test', kind: 'fold' }),
       skillDocPath,
       name: 'CustomBot',
     })
-    expect(agent.name).toBe('CustomBot')
+    expect(agent.name).toContain('CustomBot')
+    expect(agent.name).toContain('(')
+    expect(agent.name).toContain(')')
   })
 
   it('should return a valid fold action from LLM', async () => {
@@ -293,7 +298,7 @@ describe('LlmAgent', () => {
     const action = await agent.getAction(state, defaultLegalActions)
 
     expect(action.kind).toBe('fold')
-    expect(action.action_id).toBeDefined()
+    expect(action.turn_token).toBeDefined()
   })
 
   it('should return a valid call action from LLM', async () => {

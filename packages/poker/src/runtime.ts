@@ -69,8 +69,12 @@ export class TableRuntime {
   private needToAct: Set<number> = new Set();
   private seq: number = 0;
   private lastAction: { seatId: number; kind: ActionKind; amount?: number } | null = null;
-  private processedActionIds: Set<string> = new Set();
   private handSeed: string = '';
+
+  /** Server-issued idempotency token for the current turn */
+  private currentTurnToken: string = '';
+  /** Map of processed turn tokens → { seq, success } for replay/idempotency */
+  private processedTurnTokens: Map<string, { seq: number; success: boolean }> = new Map();
 
   constructor(config: TableRuntimeConfig) {
     this.config = config;
@@ -95,6 +99,28 @@ export class TableRuntime {
    */
   getActionTimeoutMs(): number {
     return this.config.actionTimeoutMs;
+  }
+
+  /**
+   * Get the current turn token (server-issued idempotency token)
+   */
+  getTurnToken(): string {
+    return this.currentTurnToken;
+  }
+
+  /**
+   * Check if a turn token has already been processed (idempotency)
+   */
+  isTurnTokenProcessed(turnToken: string): { seq: number; success: boolean } | undefined {
+    return this.processedTurnTokens.get(turnToken);
+  }
+
+  /**
+   * Generate a new turn token for the current action window.
+   * Called whenever action ownership changes (new acting seat or new street/hand).
+   */
+  private generateTurnToken(): void {
+    this.currentTurnToken = crypto.randomUUID();
   }
 
   /**
@@ -222,7 +248,8 @@ export class TableRuntime {
     this.communityCards = [];
     this.pots = [];
     this.lastAction = null;
-    this.processedActionIds.clear();
+    this.processedTurnTokens.clear();
+    this.currentTurnToken = '';
 
     // Move dealer button
     this.dealerSeat = this.getNextActiveSeat(this.dealerSeat);
@@ -263,6 +290,7 @@ export class TableRuntime {
     this.currentSeat = this.getNextActingSeat(bigBlindSeat);
 
     this.seq++;
+    this.generateTurnToken();
     return true;
   }
 
@@ -305,13 +333,6 @@ export class TableRuntime {
     const currentIndex = seats.findIndex((s) => s > currentSeat);
 
     return currentIndex >= 0 ? seats[currentIndex]! : seats[0]!;
-  }
-
-  /**
-   * Check if action is from a known action ID (idempotency)
-   */
-  isActionProcessed(actionId: string): boolean {
-    return this.processedActionIds.has(actionId);
   }
 
   /**
@@ -366,8 +387,8 @@ export class TableRuntime {
    * Apply a player action
    */
   applyAction(seatId: number, action: PlayerAction): ActionResult {
-    // Check idempotency (application concern, not a poker rule)
-    if (this.processedActionIds.has(action.action_id)) {
+    // Check idempotency via turn_token
+    if (this.processedTurnTokens.has(action.turn_token)) {
       return { success: true }; // Already processed
     }
 
@@ -425,10 +446,13 @@ export class TableRuntime {
     }
 
     this.lastAction = { seatId, kind: action.kind, amount: action.amount };
-    this.processedActionIds.add(action.action_id);
+
+    // Record idempotency
+    this.processedTurnTokens.set(action.turn_token, { seq: this.seq + 1, success: true });
+
     this.seq++;
 
-    // Advance game state
+    // Advance game state (this may generate a new turn token for the next actor)
     this.advanceGame();
 
     return { success: true };
@@ -488,6 +512,7 @@ export class TableRuntime {
       const solePlayer = actingPlayers[0]!;
       if (solePlayer.bet < this.currentBet) {
         this.currentSeat = solePlayer.seatId;
+        this.generateTurnToken();
         return;
       }
       // Everyone else is all-in, sole player has matched -- run out the board
@@ -508,6 +533,7 @@ export class TableRuntime {
       this.advanceToNextStreet();
     } else {
       this.currentSeat = this.getNextSeatNeedingAction(this.currentSeat);
+      this.generateTurnToken();
     }
   }
 
@@ -557,6 +583,7 @@ export class TableRuntime {
     this.needToAct = new Set(actingPlayers.map((p) => p.seatId));
     this.currentSeat = this.getNextActingSeat(this.dealerSeat);
     this.seq++;
+    this.generateTurnToken();
   }
 
   /**
@@ -776,6 +803,7 @@ export class TableRuntime {
       minRaise: this.minRaise,
       toCall: toCall > 0 ? toCall : undefined,
       seq: this.seq,
+      turn_token: isMyTurn ? this.currentTurnToken : undefined,
     };
   }
 

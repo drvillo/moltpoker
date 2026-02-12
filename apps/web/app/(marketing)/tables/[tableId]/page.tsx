@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { AsciiLogo, AsciiCardRow, AsciiTableDisplay, AsciiDivider, StatusBadge } from "@/components/ascii"
 import { publicApi, type PublicTableDetail } from "@/lib/publicApi"
@@ -74,6 +74,21 @@ export default function TableDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isReplayLoading, setIsReplayLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isLiveUpdating, setIsLiveUpdating] = useState(false)
+  
+  // Use refs to track values we need in polling without triggering re-fetches
+  const lastUpdateSeqRef = useRef<number>(0)
+  const currentIndexRef = useRef<number>(0)
+  const replayDataLengthRef = useRef<number>(0)
+  
+  // Keep refs in sync
+  useEffect(() => {
+    currentIndexRef.current = currentIndex
+  }, [currentIndex])
+  
+  useEffect(() => {
+    replayDataLengthRef.current = replayData?.snapshots.length ?? 0
+  }, [replayData?.snapshots.length])
 
   // Load table details
   useEffect(() => {
@@ -99,39 +114,87 @@ export default function TableDetailPage() {
     if (table.status === "waiting") return
 
     let cancelled = false
-    async function loadEvents() {
-      setIsReplayLoading(true)
+    let pollInterval: NodeJS.Timeout | null = null
+    let allLoadedEvents: Awaited<ReturnType<typeof publicApi.getTableEvents>>["events"] = []
+
+    async function loadEvents(isInitialLoad = false) {
+      if (isInitialLoad) setIsReplayLoading(true)
       try {
-        const allEvents: Awaited<ReturnType<typeof publicApi.getTableEvents>>["events"] = []
-        let fromSeq: number | undefined
+        // For incremental updates, only fetch events after lastUpdateSeq
+        const startSeq = isInitialLoad ? undefined : (lastUpdateSeqRef.current > 0 ? lastUpdateSeqRef.current + 1 : undefined)
+        
+        const newEvents: Awaited<ReturnType<typeof publicApi.getTableEvents>>["events"] = []
+        let fromSeq = startSeq
         let hasMore = true
+        
         while (hasMore) {
           if (cancelled) return
           const { events, hasMore: more } = await publicApi.getTableEvents(tableId, {
             fromSeq,
             limit: 5000,
           })
-          allEvents.push(...events)
+          newEvents.push(...events)
           hasMore = more && events.length > 0
           fromSeq = events.length > 0 ? events[events.length - 1].seq + 1 : undefined
           if (events.length === 0) break
         }
+        
         if (cancelled) return
-        const data = buildReplayData(tableId, allEvents)
+        
+        // For initial load, replace all events; for updates, append new ones
+        if (isInitialLoad) {
+          allLoadedEvents = newEvents
+        } else if (newEvents.length > 0) {
+          allLoadedEvents = [...allLoadedEvents, ...newEvents]
+          // Show subtle update indicator
+          setIsLiveUpdating(true)
+          setTimeout(() => setIsLiveUpdating(false), 800)
+        } else {
+          // No new events, skip rebuild
+          return
+        }
+        
+        // Update last known sequence number
+        if (allLoadedEvents.length > 0) {
+          lastUpdateSeqRef.current = allLoadedEvents[allLoadedEvents.length - 1].seq
+        }
+        
+        const data = buildReplayData(tableId, allLoadedEvents)
+        const oldLength = replayDataLengthRef.current
+        const newLength = data.snapshots.length
+        
         setReplayData(data)
         setFinalStacks(data.finalStacks)
-        // Start at the end to show final state
-        if (data.snapshots.length > 0) {
+        
+        // If this is the initial load, start at the end
+        if (isInitialLoad && data.snapshots.length > 0) {
           setCurrentIndex(data.snapshots.length - 1)
+        }
+        // If user is viewing the last snapshot, keep them at the end
+        else if (currentIndexRef.current >= oldLength - 1 && newLength > oldLength) {
+          setCurrentIndex(newLength - 1)
         }
       } catch (err) {
         console.error("Failed to load events:", err)
       } finally {
-        if (!cancelled) setIsReplayLoading(false)
+        if (!cancelled && isInitialLoad) setIsReplayLoading(false)
       }
     }
-    loadEvents()
-    return () => { cancelled = true }
+
+    // Initial load
+    loadEvents(true)
+
+    // Poll for new events if table is running
+    if (table.status === "running") {
+      pollInterval = setInterval(() => {
+        if (!cancelled) loadEvents(false)
+      }, 2000) // Poll every 2 seconds
+    }
+
+    return () => {
+      cancelled = true
+      if (pollInterval) clearInterval(pollInterval)
+    }
   }, [tableId, table])
 
   // Navigation callbacks
@@ -225,11 +288,20 @@ export default function TableDetailPage() {
                 Table
               </h1>
               <StatusBadge status={table.status} />
+              {table.status === "running" && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-red-500/10 border border-red-500/20">
+                  <div className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                    isLiveUpdating ? "bg-red-400 scale-125" : "bg-red-500 animate-pulse"
+                  }`} />
+                  <span className="font-mono text-xs text-red-400">LIVE</span>
+                </div>
+              )}
             </div>
             <p className="font-mono text-xs text-slate-500">
               ID: {tableId}
               {hasReplay && gameState && <> · Hand #{gameState.handNumber}</>}
               {" · "}Blinds {table.config.blinds.small}/{table.config.blinds.big}
+              {table.status === "running" && <> · Auto-updating every 2s</>}
             </p>
           </div>
           <Link
@@ -312,57 +384,52 @@ export default function TableDetailPage() {
           </div>
         )}
 
-        {/* Replay loading state */}
-        {isReplayLoading && (
-          <div className="border border-slate-800 rounded-lg p-8 bg-slate-900/30 mb-6 text-center">
-            <span className="font-mono text-sm text-slate-500 animate-pulse">Loading game history...</span>
-          </div>
-        )}
-
-        {/* Waiting state: no replay data */}
-        {table.status === "waiting" && (
-          <div className="border border-slate-800 rounded-lg p-8 bg-slate-900/30 mb-6 text-center">
-            <span className="font-mono text-sm text-amber-400/60">
-              This table is waiting for players. Replay will be available once the game starts.
-            </span>
-          </div>
-        )}
-
-        {/* No events found */}
-        {!isReplayLoading && table.status !== "waiting" && !hasReplay && (
-          <div className="border border-slate-800 rounded-lg p-8 bg-slate-900/30 mb-6 text-center">
-            <span className="font-mono text-sm text-slate-500">No game events found.</span>
-          </div>
-        )}
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main content: table + players */}
           <div className="lg:col-span-2 space-y-6">
             {/* Community cards display */}
-            {hasReplay && gameState && (
-              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
-                <h2 className="font-mono text-sm text-slate-400 mb-4">
-                  {gameState.handNumber > 0 ? `Hand #${gameState.handNumber}` : "Game State"}
-                </h2>
-                <div className="flex justify-center mb-4">
-                  <AsciiTableDisplay
-                    communityCards={gameState.communityCards}
-                    pot={totalPot}
-                    phase={gameState.phase}
-                  />
+            <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30 transition-all duration-300">
+              <h2 className="font-mono text-sm text-slate-400 mb-4">
+                {gameState?.handNumber && gameState.handNumber > 0 ? `Hand #${gameState.handNumber}` : "Game State"}
+              </h2>
+              {isReplayLoading ? (
+                <div className="flex justify-center py-8">
+                  <span className="font-mono text-sm text-slate-500 animate-pulse">Loading game...</span>
                 </div>
-                {gameState.communityCards.length > 0 && (
-                  <div className="flex justify-center">
-                    <AsciiCardRow cards={gameState.communityCards} size="sm" />
+              ) : table.status === "waiting" ? (
+                <div className="flex justify-center py-8">
+                  <span className="font-mono text-sm text-amber-400/60">Waiting for players...</span>
+                </div>
+              ) : !hasReplay || !gameState ? (
+                <div className="flex justify-center py-8">
+                  <span className="font-mono text-sm text-slate-500">No game data</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-center mb-4">
+                    <AsciiTableDisplay
+                      communityCards={gameState.communityCards}
+                      pot={totalPot}
+                      phase={gameState.phase}
+                    />
                   </div>
-                )}
-              </div>
-            )}
+                  {gameState.communityCards.length > 0 && (
+                    <div className="flex justify-center transition-opacity duration-300">
+                      <AsciiCardRow cards={gameState.communityCards} size="sm" />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
 
             {/* Players */}
-            {hasReplay && gameState && (
-              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
-                <h2 className="font-mono text-sm text-slate-400 mb-4">Players</h2>
+            <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+              <h2 className="font-mono text-sm text-slate-400 mb-4">Players</h2>
+              {!hasReplay || !gameState ? (
+                <div className="text-center py-8">
+                  <span className="font-mono text-sm text-slate-500">No player data</span>
+                </div>
+              ) : (
                 <div className="space-y-3">
                   {gameState.players.map((player) => {
                     const isFolded = player.folded
@@ -373,7 +440,7 @@ export default function TableDetailPage() {
                     return (
                       <div
                         key={player.seatId}
-                        className={`border rounded-lg p-3 sm:p-4 transition-colors ${
+                        className={`border rounded-lg p-3 sm:p-4 transition-all duration-300 ${
                           isCurrentTurn
                             ? "border-red-400/30 bg-red-400/5"
                             : isFolded
@@ -392,22 +459,22 @@ export default function TableDetailPage() {
                               {player.agentName ?? `Seat ${player.seatId}`}
                             </span>
                             {isDealer && (
-                              <span className="font-mono text-xs text-amber-400 border border-amber-400/30 rounded px-1">D</span>
+                              <span className="font-mono text-xs text-amber-400 border border-amber-400/30 rounded px-1 transition-opacity duration-300">D</span>
                             )}
                             {isCurrentTurn && (
-                              <span className="font-mono text-xs text-red-400">[TURN]</span>
+                              <span className="font-mono text-xs text-red-400 transition-opacity duration-300">[TURN]</span>
                             )}
                             {isFolded && (
-                              <span className="font-mono text-xs text-slate-600">[FOLD]</span>
+                              <span className="font-mono text-xs text-slate-600 transition-opacity duration-300">[FOLD]</span>
                             )}
                             {isAllIn && (
-                              <span className="font-mono text-xs text-amber-400">[ALL-IN]</span>
+                              <span className="font-mono text-xs text-amber-400 transition-opacity duration-300">[ALL-IN]</span>
                             )}
                           </div>
                           <div className="text-right">
-                            <span className="font-mono text-sm text-red-400">{player.stack}</span>
+                            <span className="font-mono text-sm text-red-400 transition-all duration-300 tabular-nums">{player.stack}</span>
                             {player.bet > 0 && (
-                              <span className="font-mono text-xs text-amber-400 ml-2">
+                              <span className="font-mono text-xs text-amber-400 ml-2 transition-all duration-300 tabular-nums">
                                 bet: {player.bet}
                               </span>
                             )}
@@ -416,7 +483,7 @@ export default function TableDetailPage() {
 
                         {/* Hole cards */}
                         {player.holeCards && player.holeCards.length > 0 && (
-                          <div className="flex items-center gap-1 font-mono text-xs">
+                          <div className="flex items-center gap-1 font-mono text-xs transition-opacity duration-300">
                             <span className="text-slate-600">Cards: </span>
                             {player.holeCards.map((card, i) => (
                               <InlineCard key={i} rank={card.rank} suit={card.suit} />
@@ -427,12 +494,12 @@ export default function TableDetailPage() {
                     )
                   })}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Hand results (when hand is complete) */}
             {hasReplay && handComplete && (
-              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30 transition-all duration-300">
                 <h2 className="font-mono text-sm text-slate-400 mb-4">Hand Result</h2>
                 <div className="space-y-2">
                   {handComplete.results.map((r, i) => {
@@ -440,7 +507,7 @@ export default function TableDetailPage() {
                     return (
                       <div
                         key={i}
-                        className={`flex items-center justify-between font-mono text-xs sm:text-sm ${
+                        className={`flex items-center justify-between font-mono text-xs sm:text-sm transition-all duration-300 ${
                           isWinner ? "text-amber-400" : "text-slate-500"
                         }`}
                       >
@@ -457,7 +524,7 @@ export default function TableDetailPage() {
                             <span className="text-slate-500">({r.handRank})</span>
                           )}
                         </div>
-                        <span className={isWinner ? "text-green-400" : "text-slate-600"}>
+                        <span className={`tabular-nums transition-all duration-300 ${isWinner ? "text-green-400" : "text-slate-600"}`}>
                           {isWinner ? `+${r.winnings}` : r.winnings}
                         </span>
                       </div>
@@ -469,9 +536,9 @@ export default function TableDetailPage() {
 
             {/* Last action (when no hand complete) */}
             {hasReplay && gameState?.lastAction && !handComplete && (
-              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
+              <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30 transition-all duration-300">
                 <h2 className="font-mono text-sm text-slate-400 mb-3">Last Action</h2>
-                <div className="font-mono text-xs text-slate-300">
+                <div className="font-mono text-xs text-slate-300 transition-all duration-300">
                   Seat {gameState.lastAction.seatId} - {gameState.lastAction.kind}
                   {gameState.lastAction.amount !== undefined && ` (${gameState.lastAction.amount})`}
                 </div>
@@ -494,24 +561,24 @@ export default function TableDetailPage() {
                 <div className="font-mono text-xs space-y-2">
                   <div className="flex justify-between">
                     <span className="text-slate-500">Blinds</span>
-                    <span className="text-slate-300">{table.config.blinds.small} / {table.config.blinds.big}</span>
+                    <span className="text-slate-300 tabular-nums">{table.config.blinds.small} / {table.config.blinds.big}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Max Seats</span>
-                    <span className="text-slate-300">{table.config.maxSeats}</span>
+                    <span className="text-slate-300 tabular-nums">{table.config.maxSeats}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Initial Stack</span>
-                    <span className="text-slate-300">{table.config.initialStack.toLocaleString()}</span>
+                    <span className="text-slate-300 tabular-nums">{table.config.initialStack.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Timeout</span>
-                    <span className="text-slate-300">{table.config.actionTimeoutMs.toLocaleString()}ms</span>
+                    <span className="text-slate-300 tabular-nums">{table.config.actionTimeoutMs.toLocaleString()}ms</span>
                   </div>
                   {hasReplay && (
-                    <div className="flex justify-between">
+                    <div className="flex justify-between transition-all duration-300">
                       <span className="text-slate-500">Total Hands</span>
-                      <span className="text-slate-300">{replayData.totalHands}</span>
+                      <span className="text-slate-300 tabular-nums">{replayData.totalHands}</span>
                     </div>
                   )}
                 </div>

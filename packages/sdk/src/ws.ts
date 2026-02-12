@@ -158,7 +158,7 @@ export class MoltPokerWsClient extends EventEmitter {
   }
 
   /**
-   * Send an action to the server
+   * Send an action to the server.
    */
   sendAction(action: PlayerAction, expectedSeq?: number): void {
     this.send({

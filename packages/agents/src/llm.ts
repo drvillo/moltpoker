@@ -5,7 +5,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { dirname } from 'path'
 import type { GameStatePayload, LegalAction, PlayerAction } from '@moltpoker/shared'
 
-import { createActionId, type PokerAgent } from './types.js'
+import { createAction, type PokerAgent } from './types.js'
 import {
   formatCards,
   formatHandHeader,
@@ -89,12 +89,11 @@ export function formatGameState(state: GameStatePayload, legalActions: LegalActi
 
 // ─── Decision → PlayerAction ─────────────────────────────────────────────────
 
-/** Convert a raw LLM decision into a PlayerAction (no validation/clamping). */
-function buildAction(decision: PokerDecision): PlayerAction {
-  const base = { action_id: createActionId(), kind: decision.kind }
-  if (decision.kind === 'raiseTo' && decision.amount !== null)
-    return { ...base, kind: 'raiseTo', amount: decision.amount }
-  return base
+/** Convert a raw LLM decision into a PlayerAction (no validation/clamping).
+ *  The turn_token is applied by the caller which has access to the game state. */
+function buildAction(decision: PokerDecision, state: GameStatePayload): PlayerAction {
+  const amount = decision.kind === 'raiseTo' && decision.amount !== null ? decision.amount : undefined
+  return createAction(decision.kind, state, amount)
 }
 
 // ─── Agent ───────────────────────────────────────────────────────────────────
@@ -114,7 +113,9 @@ export class LlmAgent implements PokerAgent {
   private logPath: string | null
 
   constructor(config: LlmAgentConfig) {
-    this.name = config.name ?? 'LlmAgent'
+    const baseName = config.name ?? 'LlmAgent'
+    const modelId = (config.model as { modelId?: string }).modelId ?? 'unknown'
+    this.name = `${baseName} (${modelId})`
     this.model = config.model
     this.temperature = config.temperature ?? 0.3
     this.logPath = config.logPath ?? null
@@ -177,7 +178,7 @@ export class LlmAgent implements PokerAgent {
       temperature: this.temperature,
     })
 
-    const action = buildAction(object)
+    const action = buildAction(object, state)
 
     this.appendLog({
       event: 'llm_response',

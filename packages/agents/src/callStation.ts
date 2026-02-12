@@ -1,6 +1,6 @@
 import type { GameStatePayload, LegalAction, PlayerAction } from '@moltpoker/shared';
 
-import { createActionId, type PokerAgent } from './types.js';
+import { createAction, type PokerAgent } from './types.js';
 import { logAgentHandComplete, logAgentError } from './utils/output.js';
 
 /**
@@ -12,7 +12,7 @@ import { logAgentHandComplete, logAgentError } from './utils/output.js';
 export class CallStationAgent implements PokerAgent {
   name = 'CallStationAgent';
 
-  getAction(_state: GameStatePayload, legalActions: LegalAction[]): PlayerAction {
+  getAction(state: GameStatePayload, legalActions: LegalAction[]): PlayerAction {
     if (legalActions.length === 0) {
       throw new Error('No legal actions available');
     }
@@ -23,17 +23,17 @@ export class CallStationAgent implements PokerAgent {
     // Check if we can check
     const canCheck = legalActions.some((a) => a.kind === 'check');
     if (canCheck) {
-      return { action_id: createActionId(), kind: 'check' };
+      return createAction('check', state);
     }
 
     // Check if we can call
     const canCall = legalActions.some((a) => a.kind === 'call');
     if (canCall) {
-      return { action_id: createActionId(), kind: 'call' };
+      return createAction('call', state);
     }
 
     // If we can't check or call, we must fold (shouldn't happen normally)
-    return { action_id: createActionId(), kind: 'fold' };
+    return createAction('fold', state);
   }
 
   onHandComplete(handNumber: number, winnings: number): void {

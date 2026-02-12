@@ -97,7 +97,7 @@ describe('TableRuntime', () => {
       const otherSeat = currentSeat === 0 ? 1 : 0;
 
       const result = runtime.applyAction(otherSeat, {
-        action_id: 'test-1',
+        turn_token: runtime.getTurnToken(),
         kind: 'fold',
       });
 
@@ -108,7 +108,7 @@ describe('TableRuntime', () => {
     it('should accept valid fold', () => {
       const currentSeat = runtime.getCurrentSeat();
       const result = runtime.applyAction(currentSeat, {
-        action_id: 'test-1',
+        turn_token: runtime.getTurnToken(),
         kind: 'fold',
       });
 
@@ -118,25 +118,26 @@ describe('TableRuntime', () => {
     it('should accept valid call', () => {
       const currentSeat = runtime.getCurrentSeat();
       const result = runtime.applyAction(currentSeat, {
-        action_id: 'test-1',
+        turn_token: runtime.getTurnToken(),
         kind: 'call',
       });
 
       expect(result.success).toBe(true);
     });
 
-    it('should handle idempotency', () => {
+    it('should handle idempotency via turn_token', () => {
       const currentSeat = runtime.getCurrentSeat();
+      const turnToken = runtime.getTurnToken();
       
       // First action
       const result1 = runtime.applyAction(currentSeat, {
-        action_id: 'test-same-id',
+        turn_token: turnToken,
         kind: 'call',
       });
       expect(result1.success).toBe(true);
 
-      // Same action ID again (might be different player's turn now)
-      expect(runtime.isActionProcessed('test-same-id')).toBe(true);
+      // Same turn_token again — should be recorded as processed
+      expect(runtime.isTurnTokenProcessed(turnToken)).toBeDefined();
     });
   });
 

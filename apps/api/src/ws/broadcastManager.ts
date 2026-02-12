@@ -313,13 +313,13 @@ class BroadcastManager {
   sendAck(
     tableId: string,
     agentId: string,
-    actionId: string,
+    turnToken: string,
     seq: number,
     success: boolean,
   ): void {
     const conn = this.getConnection(tableId, agentId)
     if (conn) {
-      this.sendTo(conn.ws, conn.format, 'ack', { action_id: actionId, seq, success }, tableId, seq)
+      this.sendTo(conn.ws, conn.format, 'ack', { turn_token: turnToken, seq, success }, tableId, seq)
     }
   }
 

@@ -108,7 +108,7 @@ export function getDefaultTimeoutAction(runtime: TableRuntime, seatId: number): 
   const canCheck = legalActions.some((la) => la.kind === 'check');
 
   return {
-    action_id: `timeout-${Date.now()}-${seatId}`,
+    turn_token: runtime.getTurnToken(),
     kind: canCheck ? 'check' : 'fold',
   };
 }

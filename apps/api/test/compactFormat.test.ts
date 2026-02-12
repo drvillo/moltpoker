@@ -331,11 +331,11 @@ describe('welcome conversion', () => {
 
 describe('ack conversion', () => {
   it('maps fields correctly', () => {
-    const payload = { action_id: 'uuid-123', seq: 43, success: true }
+    const payload = { turn_token: 'token-123', seq: 43, success: true }
     const result = formatMessage('ack', payload) as Record<string, unknown>
     expect(result).toEqual({
       type: 'ack',
-      action_id: 'uuid-123',
+      turn_token: 'token-123',
       seq: 43,
     })
   })

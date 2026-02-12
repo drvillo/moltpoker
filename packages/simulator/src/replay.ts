@@ -185,12 +185,13 @@ export class ReplaySimulator {
       case 'PLAYER_ACTION': {
         const payload = event.payload as {
           seatId: number;
-          actionId: string;
+          turnToken?: string;
+          actionId?: string;
           kind: 'fold' | 'check' | 'call' | 'raiseTo';
           amount?: number;
         };
         runtime.applyAction(payload.seatId, {
-          action_id: payload.actionId,
+          turn_token: payload.turnToken ?? payload.actionId ?? crypto.randomUUID(),
           kind: payload.kind,
           amount: payload.amount,
         });

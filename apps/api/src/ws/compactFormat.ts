@@ -31,7 +31,7 @@ export function formatMessage(
     case 'welcome':
       return compactWelcome(payload as WelcomePayload)
     case 'ack':
-      return compactAck(payload as { action_id: string; seq: number; success: boolean })
+      return compactAck(payload as { turn_token: string; seq: number; success: boolean })
     case 'error':
       return compactError(payload as ErrorPayload)
     case 'table_status':
@@ -116,6 +116,7 @@ function compactGameState(state: GameStatePayload): Record<string, unknown> {
     })
 
   if (state.toCall !== undefined) out.toCall = state.toCall
+  if (state.turn_token) out.turn_token = state.turn_token
 
   return out
 }
@@ -146,10 +147,10 @@ function compactWelcome(payload: WelcomePayload): Record<string, unknown> {
   }
 }
 
-function compactAck(payload: { action_id: string; seq: number; success: boolean }): Record<string, unknown> {
+function compactAck(payload: { turn_token: string; seq: number; success: boolean }): Record<string, unknown> {
   return {
     type: 'ack',
-    action_id: payload.action_id,
+    turn_token: payload.turn_token,
     seq: payload.seq,
   }
 }

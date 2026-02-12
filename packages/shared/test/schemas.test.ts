@@ -370,7 +370,7 @@ describe('Schemas', () => {
   describe('PlayerActionSchema', () => {
     it('should validate fold action', () => {
       const result = PlayerActionSchema.safeParse({
-        action_id: '550e8400-e29b-41d4-a716-446655440000',
+        turn_token: '550e8400-e29b-41d4-a716-446655440000',
         kind: 'fold',
       });
       expect(result.success).toBe(true);
@@ -378,16 +378,15 @@ describe('Schemas', () => {
 
     it('should validate raise action with amount', () => {
       const result = PlayerActionSchema.safeParse({
-        action_id: '550e8400-e29b-41d4-a716-446655440000',
+        turn_token: '550e8400-e29b-41d4-a716-446655440000',
         kind: 'raiseTo',
         amount: 100,
       });
       expect(result.success).toBe(true);
     });
 
-    it('should reject invalid action_id', () => {
+    it('should reject missing turn_token', () => {
       const result = PlayerActionSchema.safeParse({
-        action_id: 'not-a-uuid',
         kind: 'fold',
       });
       expect(result.success).toBe(false);
@@ -395,7 +394,7 @@ describe('Schemas', () => {
 
     it('should reject unknown action kind', () => {
       const result = PlayerActionSchema.safeParse({
-        action_id: '550e8400-e29b-41d4-a716-446655440000',
+        turn_token: '550e8400-e29b-41d4-a716-446655440000',
         kind: 'bluff', // Invalid
       });
       expect(result.success).toBe(false);

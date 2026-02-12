@@ -58,7 +58,7 @@ Your task is given to you as a user message. Follow it precisely.
 - After connecting to a WebSocket, use websocket_read to wait for incoming messages.
 - Process each message according to the documentation.
 - When a message indicates it is your turn to act, decide on an action and send it via websocket_send using the exact JSON format from the documentation.
-- Always include required fields like action_id (use generate_uuid) and expected_seq.
+- Always include required fields as described in the documentation (e.g. turn_token, expected_seq). Use generate_uuid only if the documentation explicitly requires a client-generated UUID.
 - Continue the read-process-send loop until the connection closes or you are instructed to stop.
 
 ## Decision Making
@@ -369,7 +369,7 @@ function createGenericTools(wsManager: WebSocketManager) {
 
     generate_uuid: tool({
       description:
-        'Generate a unique UUID v4 string. Use this when the documentation requires unique identifiers (e.g. action_id).',
+        'Generate a unique UUID v4 string. Use this when the documentation requires unique identifiers.',
       inputSchema: z.object({}),
       execute: async () => {
         return { uuid: crypto.randomUUID() }
@@ -464,6 +464,7 @@ function createLogger(logPath: string | null) {
  * Uses a ReAct-style manual loop powered by AI SDK v6's generateText.
  */
 export class AutonomousAgent {
+  name: string
   private model: LanguageModel
   private temperature: number
   private wsManager: WebSocketManager
@@ -481,6 +482,10 @@ export class AutonomousAgent {
     this.tools = createGenericTools(this.wsManager)
     this.log = createLogger(config.logPath ?? null)
     this.onStep = config.onStep ?? null
+    
+    // Extract model name and set agent name
+    const modelId = (this.model as { modelId?: string }).modelId ?? 'unknown'
+    this.name = `AutonomousAgent (${modelId})`
   }
 
   /** Signal the agent to stop after the current iteration. */
@@ -498,7 +503,7 @@ export class AutonomousAgent {
       { role: 'user', content: task },
     ]
 
-    if (!this.onStep) console.log('[AutonomousAgent] Starting task...')
+    if (!this.onStep) console.log(`[${this.name}] Starting task...`)
     this.log({ event: 'agent_start', timestamp: new Date().toISOString(), task })
 
     let iteration = 0
@@ -555,11 +560,11 @@ export class AutonomousAgent {
               this.onStep({ tools, text: text ?? null, usage, iteration })
             } else {
               for (const t of tools) {
-                console.log(`[AutonomousAgent] Tool: ${t.toolName}(${summarizeArgs(t.input)})`)
+                console.log(`[${this.name}] Tool: ${t.toolName}(${summarizeArgs(t.input)})`)
               }
               if (text) {
                 const preview = text.length > 200 ? text.slice(0, 200) + '...' : text
-                console.log(`[AutonomousAgent] Thinking: ${preview}`)
+                console.log(`[${this.name}] Thinking: ${preview}`)
               }
             }
 
@@ -596,17 +601,17 @@ export class AutonomousAgent {
         // If model generated final text (no pending tool calls), log it
         if (result.text && !this.onStep) {
           const preview = result.text.length > 300 ? result.text.slice(0, 300) + '...' : result.text
-          console.log(`[AutonomousAgent] ${preview}`)
+          console.log(`[${this.name}] ${preview}`)
         }
 
         // Check if the agent has any active WebSocket connections
         if (!this.wsManager.hasActiveConnections()) {
-          if (!this.onStep) console.log('[AutonomousAgent] No active connections. Checking for completion...')
+          if (!this.onStep) console.log(`[${this.name}] No active connections. Checking for completion...`)
 
           // Give the agent one more chance — maybe it needs to make another HTTP call
           // If it also generated text without tool calls, we're done
           if (result.text && (!result.steps || result.steps.every((s) => !s.toolCalls?.length))) {
-            if (!this.onStep) console.log('[AutonomousAgent] Agent completed (no connections, no tool calls).')
+            if (!this.onStep) console.log(`[${this.name}] Agent completed (no connections, no tool calls).`)
             break
           }
         }
@@ -646,7 +651,7 @@ export class AutonomousAgent {
         trimContext(messages)
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err)
-        console.error(`[AutonomousAgent] Error in iteration ${iteration}: ${errorMsg}`)
+        console.error(`[${this.name}] Error in iteration ${iteration}: ${errorMsg}`)
         this.log({
           event: 'error',
           timestamp: new Date().toISOString(),
@@ -663,7 +668,7 @@ export class AutonomousAgent {
         }
 
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log(`[AutonomousAgent] Same error repeated ${consecutiveErrors} times. Resetting context...`)
+          console.log(`[${this.name}] Same error repeated ${consecutiveErrors} times. Resetting context...`)
           this.log({ event: 'context_reset', timestamp: new Date().toISOString(), iteration, reason: errorMsg })
 
           // Reset to a clean state: keep only the task and a recovery instruction
@@ -692,12 +697,12 @@ export class AutonomousAgent {
     }
 
     if (iteration >= this.maxIterations)
-      console.log(`[AutonomousAgent] Reached max iterations (${this.maxIterations}). Stopping.`)
+      console.log(`[${this.name}] Reached max iterations (${this.maxIterations}). Stopping.`)
 
     // Clean up
     this.wsManager.disconnectAll()
     this.log({ event: 'agent_stop', timestamp: new Date().toISOString(), iterations: iteration })
-    console.log(`[AutonomousAgent] Stopped after ${iteration} iterations.`)
+    console.log(`[${this.name}] Stopped after ${iteration} iterations.`)
   }
 }
 

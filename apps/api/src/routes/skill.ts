@@ -4,11 +4,24 @@ import { fileURLToPath } from 'url';
 
 import type { FastifyInstance } from 'fastify';
 
+import { config } from '../config.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Replace template placeholders in skill.md with environment-specific values.
+ * The source file uses {BASE_URL} and {WS_URL} as placeholders so each
+ * deployment serves concrete URLs agents can use directly.
+ */
+function resolveTemplateVars(raw: string): string {
+  return raw
+    .replace(/\{BASE_URL\}/g, config.publicBaseUrl)
+    .replace(/\{WS_URL\}/g, config.wsUrl)
+}
 
 export function registerSkillRoutes(fastify: FastifyInstance): void {
   /**
-   * GET /skill.md - Serve skill documentation
+   * GET /skill.md - Serve skill documentation with resolved URLs
    */
   fastify.get('/skill.md', async (_request, reply) => {
     // Try multiple paths to find skill.md
@@ -20,7 +33,8 @@ export function registerSkillRoutes(fastify: FastifyInstance): void {
 
     for (const skillPath of possiblePaths) {
       if (existsSync(skillPath)) {
-        const content = readFileSync(skillPath, 'utf-8');
+        const raw = readFileSync(skillPath, 'utf-8');
+        const content = resolveTemplateVars(raw);
         return reply
           .header('Content-Type', 'text/markdown; charset=utf-8')
           .send(content);

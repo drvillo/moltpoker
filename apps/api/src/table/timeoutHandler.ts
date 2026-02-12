@@ -136,7 +136,7 @@ export async function handleActionTimeout(tableId: string, seatId: number): Prom
           handNumber: runtime.getHandNumber(),
           seatId,
           agentId: player?.agentId || 'unknown',
-          actionId: defaultAction.action_id,
+          turnToken: defaultAction.turn_token,
           kind: defaultAction.kind,
           amount: defaultAction.amount,
           isTimeout: true,

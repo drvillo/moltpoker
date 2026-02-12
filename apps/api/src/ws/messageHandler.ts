@@ -79,7 +79,7 @@ export async function handleMessage(
  */
 async function handleAction(
   session: SessionInfo,
-  action: { action_id: string; kind: string; amount?: number },
+  action: { turn_token: string; kind: string; amount?: number },
   expectedSeq?: number
 ): Promise<void> {
   const { agentId, tableId, seatId } = session;
@@ -115,16 +115,16 @@ async function handleAction(
     return;
   }
 
-  // Check idempotency
-  if (runtime.isActionProcessed(action.action_id)) {
-    // Action already processed, send ack
-    broadcastManager.sendAck(tableId, agentId, action.action_id, runtime.getSeq(), true);
+  // Check idempotency via turn_token
+  const processed = runtime.isTurnTokenProcessed(action.turn_token);
+  if (processed) {
+    broadcastManager.sendAck(tableId, agentId, action.turn_token, processed.seq, true);
     return;
   }
 
   // Apply the action
   const playerAction = {
-    action_id: action.action_id,
+    turn_token: action.turn_token,
     kind: action.kind as 'fold' | 'check' | 'call' | 'raiseTo',
     amount: action.amount,
   };
@@ -142,8 +142,8 @@ async function handleAction(
   // Clear timeout for this seat
   clearActionTimeout(tableId, seatId);
 
-  // Send ack to the acting player (sync)
-  broadcastManager.sendAck(tableId, agentId, action.action_id, runtime.getSeq(), true);
+  // Send ack echoing the turn_token
+  broadcastManager.sendAck(tableId, agentId, action.turn_token, runtime.getSeq(), true);
 
   // Broadcast updated state to all players (sync)
   broadcastManager.broadcastGameState(tableId, runtime);
@@ -166,7 +166,7 @@ async function handleAction(
         handNumber: runtime.getHandNumber(),
         seatId,
         agentId,
-        actionId: action.action_id,
+        turnToken: action.turn_token,
         kind: action.kind,
         amount: action.amount,
         isTimeout: false,

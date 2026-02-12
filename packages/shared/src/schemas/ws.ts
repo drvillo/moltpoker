@@ -56,6 +56,7 @@ export const GameStatePayloadSchema = z.object({
   minRaise: z.number().int().min(0).optional(),
   toCall: z.number().int().min(0).optional(),
   seq: z.number().int(),
+  turn_token: z.string().optional(), // Server-issued idempotency token for the current turn
 });
 
 /**
@@ -74,7 +75,7 @@ export const WelcomePayloadSchema = z.object({
  * Schema for ack payload
  */
 export const AckPayloadSchema = z.object({
-  action_id: z.string().uuid(),
+  turn_token: z.string(), // Echoed turn_token from the action
   seq: z.number().int(),
   success: z.boolean(),
 });

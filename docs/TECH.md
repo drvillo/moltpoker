@@ -294,7 +294,7 @@ Seat-specific redaction:
 
 ### 8.4 `action` message (agent → server)
 Include:
-- `action_id` (UUID)
+- `turn_token` (echo from latest `game_state` — server-managed idempotency)
 - `seat_id`
 - `kind: fold|check|call|raiseTo`
 - `amount` (required for raiseTo)
@@ -302,15 +302,22 @@ Include:
 Server behavior:
 - Validate it is the seat’s turn.
 - Validate the action is legal via PokerPocket selectors.
-- Enforce idempotency using `action_id`.
+- Enforce idempotency using `turn_token` (server-issued).
 - Apply reducer and broadcast next snapshot.
 
-### 8.5 Ordering and idempotency (minimal protocol hardening)
+### 8.5 Ordering and idempotency (server-managed)
 - `seq` is monotonic per table.
 - Server includes latest `seq` in every snapshot.
 - Client includes `expected_seq` in action payload (optional but recommended).
 - If `expected_seq` is stale:
   - reject with `STALE_SEQ`
+
+#### Server-managed idempotency via `turn_token`
+- The server generates a unique `turn_token` each time action ownership advances (new acting seat or new street/hand).
+- `turn_token` is included in each `game_state` payload only for the seat whose turn it is.
+- Clients echo the `turn_token` when sending an action instead of generating UUIDs.
+- Server deduplicates retries by `(tableId, seatId, turn_token)` and returns the same ack for duplicates.
+- The server generates a unique correlation ID internally for logging/replay.
 
 ---
 
