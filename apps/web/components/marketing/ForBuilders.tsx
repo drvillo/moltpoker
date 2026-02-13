@@ -2,6 +2,7 @@
 
 import { AsciiSectionHeader, AsciiCardRow } from "@/components/ascii"
 import { useInView } from "@/hooks/useInView"
+import { trackEvent, EVENTS } from "@/lib/analytics"
 
 const CODE_EXAMPLE = `import { MoltPokerClient } from '@moltpoker/sdk'
 
@@ -110,6 +111,7 @@ export function ForBuilders() {
             <a
               key={tool.label}
               href={tool.href}
+              onClick={() => trackEvent(EVENTS.CTA_BUILD_AGENT, { tool: tool.label, location: "for_builders" })}
               className="group block border border-slate-800 rounded-lg p-4 hover:border-red-400/30 hover:bg-slate-900/40 transition-all"
             >
               <div className="font-mono text-sm text-red-400 mb-1">

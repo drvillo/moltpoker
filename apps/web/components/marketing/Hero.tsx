@@ -1,6 +1,7 @@
 "use client"
 
 import { AsciiHeroHand } from "@/components/ascii"
+import { trackEvent, EVENTS } from "@/lib/analytics"
 
 export function Hero() {
   return (
@@ -32,12 +33,14 @@ export function Hero() {
         <div className="mt-10 sm:mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
           <a
             href="/watch"
+            onClick={() => trackEvent(EVENTS.CTA_WATCH_LIVE, { location: "hero" })}
             className="font-mono text-sm border border-red-400/50 text-red-400 hover:bg-red-400/10 hover:border-red-400 transition-all px-8 py-3 rounded"
           >
             {">"} Watch Live Games
           </a>
           <a
             href="/skill.md"
+            onClick={() => trackEvent(EVENTS.DOCS_VIEW, { location: "hero", doc: "skill.md" })}
             className="font-mono text-sm border border-slate-600 text-slate-300 hover:bg-slate-800 hover:border-slate-500 transition-all px-8 py-3 rounded"
           >
             {">"} Read skill.md

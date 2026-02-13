@@ -270,6 +270,10 @@ function createGenericTools(wsManager: WebSocketManager) {
         'Fetch a document from a URL and return its text content. Use this to read documentation, skill files, or any web resource.',
       inputSchema: z.object({
         url: z.string().describe('The URL to fetch'),
+        documentRole: z
+          .enum(['skill', 'reference'])
+          .optional()
+          .describe('Optional role hint: "skill" for bootstrap skill docs (promoted to system context), "reference" for on-demand docs'),
       }),
       execute: async ({ url }) => {
         const res = await fetch(url)
@@ -429,7 +433,7 @@ function trimContext(messages: ModelMessage[]): void {
 
   const marker: ModelMessage = {
     role: 'user' as const,
-    content: `[System note: ${trimmedCount} older messages were trimmed to save context. The documentation you fetched earlier is preserved above. Recent messages follow.]`,
+    content: `[System note: ${trimmedCount} older messages were trimmed to save context. Skill documentation is in system context. Recent messages follow.]`,
   }
 
   messages.length = 0
@@ -473,6 +477,8 @@ export class AutonomousAgent {
   private maxIterations: number
   private stopped = false
   private onStep: ((step: StepEvent) => void) | null
+  private runtimeSystemPrompt: string
+  private skillPromoted = false
 
   constructor(config: AutonomousAgentConfig) {
     this.model = config.model
@@ -482,6 +488,7 @@ export class AutonomousAgent {
     this.tools = createGenericTools(this.wsManager)
     this.log = createLogger(config.logPath ?? null)
     this.onStep = config.onStep ?? null
+    this.runtimeSystemPrompt = SYSTEM_PROMPT
     
     // Extract model name and set agent name
     const modelId = (this.model as { modelId?: string }).modelId ?? 'unknown'
@@ -525,7 +532,7 @@ export class AutonomousAgent {
         event: 'llm_prompt',
         timestamp: new Date().toISOString(),
         iteration,
-        system: iteration === 1 ? SYSTEM_PROMPT : undefined,
+        system: iteration === 1 ? this.runtimeSystemPrompt : undefined,
         messages: messages.map((m) => ({
           role: m.role,
           content: typeof m.content === 'string'
@@ -537,10 +544,10 @@ export class AutonomousAgent {
       try {
         const result = await generateText({
           model: this.model,
-          system: SYSTEM_PROMPT,
+          system: this.runtimeSystemPrompt,
           messages,
           tools: this.tools,
-          stopWhen: stepCountIs(5),
+          stopWhen: this.skillPromoted ? stepCountIs(5) : stepCountIs(1),
           temperature: this.temperature,
           onStepFinish: ({ toolCalls, toolResults, text, usage }) => {
             // Build paired tool steps (call input + result output)
@@ -569,12 +576,30 @@ export class AutonomousAgent {
             }
 
             // Always log to JSONL (includes both calls and results)
+            // Compact skill document outputs to save log space
+            const compactedResults = tools.map((t) => {
+              if (t.toolName === 'fetch_document' && t.output) {
+                const output = t.output as { content?: string; error?: string }
+                const input = t.input as { documentRole?: string; url?: string }
+                if (input.documentRole === 'skill' && output.content && output.content.length > 1000) {
+                  return {
+                    name: t.toolName,
+                    output: {
+                      ...output,
+                      content: `[${output.content.length} chars, first 200]: ${output.content.substring(0, 200)}...`,
+                    },
+                  }
+                }
+              }
+              return { name: t.toolName, output: t.output }
+            })
+            
             this.log({
               event: 'step',
               timestamp: new Date().toISOString(),
               iteration,
               toolCalls: tools.map((t) => ({ name: t.toolName, input: t.input })),
-              toolResults: tools.map((t) => ({ name: t.toolName, output: t.output })),
+              toolResults: compactedResults,
               text: text ?? null,
               usage,
             })
@@ -595,8 +620,92 @@ export class AutonomousAgent {
           finishReason: result.finishReason,
         })
 
+        // Detect and promote skill document to system prompt (one-time only)
+        if (!this.skillPromoted && result.steps) {
+          for (const step of result.steps) {
+            if (step.toolCalls && step.toolResults) {
+              for (const toolCall of step.toolCalls) {
+                if (toolCall.toolName === 'fetch_document') {
+                  // Access input property (matches onStepFinish format)
+                  const input = (toolCall as unknown as { input?: { url?: string; documentRole?: string } }).input
+                  if (input?.documentRole === 'skill') {
+                    // Find matching tool result
+                    const toolResult = step.toolResults.find(
+                      (r: { toolCallId: string }) => r.toolCallId === toolCall.toolCallId
+                    ) as { output?: { content?: string; error?: string } } | undefined
+                    
+                    const content = toolResult?.output?.content
+                    
+                    if (content && typeof content === 'string' && content.length > 1000) {
+                      this.runtimeSystemPrompt = content
+                      this.skillPromoted = true
+                      
+                      if (!this.onStep) {
+                        console.log(`[${this.name}] Skill document promoted to system context (${content.length} chars)`)
+                      }
+                      
+                      this.log({
+                        event: 'skill_promoted',
+                        timestamp: new Date().toISOString(),
+                        iteration,
+                        url: input.url,
+                        contentLength: content.length,
+                      })
+                      break
+                    }
+                  }
+                }
+              }
+            }
+            if (this.skillPromoted) break
+          }
+        }
+
         // Append the response messages to our conversation history
         messages.push(...result.response.messages)
+
+        // Compact skill tool results in message history to save context
+        if (this.skillPromoted) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i]
+            if (msg && msg.role === 'tool' && Array.isArray(msg.content)) {
+              // Look for large text content in tool results
+              let hasLargeContent = false
+              for (const part of msg.content) {
+                if (part && typeof part === 'object' && 'type' in part && part.type === 'tool-result') {
+                  // Access result content using type assertion via unknown
+                  const resultPart = part as unknown as { type: 'tool-result'; toolCallId: string; result: unknown }
+                  const result = resultPart.result
+                  if (typeof result === 'string' && result.length > 5000 && result.includes('# ')) {
+                    hasLargeContent = true
+                    break
+                  }
+                }
+              }
+              
+              // Replace entire message with compacted version if it has large content
+              if (hasLargeContent) {
+                const newContent = msg.content.map(part => {
+                  if (part && typeof part === 'object' && 'type' in part && part.type === 'tool-result') {
+                    const resultPart = part as unknown as { type: 'tool-result'; toolCallId: string; result: unknown }
+                    const result = resultPart.result
+                    if (typeof result === 'string' && result.length > 5000) {
+                      const preview = result.substring(0, 200)
+                      const hash = result.length.toString(36)
+                      return {
+                        type: 'tool-result' as const,
+                        toolCallId: resultPart.toolCallId,
+                        result: `[Skill document promoted to system context - ${result.length} chars, hash: ${hash}]\nPreview: ${preview}...`,
+                      }
+                    }
+                  }
+                  return part
+                })
+                messages[i] = { ...msg, content: newContent as typeof msg.content }
+              }
+            }
+          }
+        }
 
         // If model generated final text (no pending tool calls), log it
         if (result.text && !this.onStep) {

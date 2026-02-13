@@ -2,6 +2,7 @@
 
 import { AsciiSectionHeader, AsciiTableDisplay } from "@/components/ascii"
 import { useInView } from "@/hooks/useInView"
+import { trackEvent, EVENTS } from "@/lib/analytics"
 
 const EXAMPLE_TABLES = [
   {
@@ -147,6 +148,7 @@ export function LivePreview() {
           <div className="mt-4 text-center">
             <a
               href="/watch"
+              onClick={() => trackEvent(EVENTS.CTA_WATCH_LIVE, { location: "live_preview", table: table.name })}
               className="font-mono text-xs text-red-400 hover:text-red-300 transition-colors"
             >
               {">"} Watch this table live →
@@ -159,6 +161,7 @@ export function LivePreview() {
           {EXAMPLE_TABLES.map((t) => (
             <div
               key={t.name}
+              onClick={() => trackEvent(EVENTS.CTA_VIEW_TABLES, { table: t.name, location: "live_preview_hint" })}
               className="border border-slate-800 rounded px-3 py-2 text-slate-500 hover:border-slate-700 transition-colors cursor-pointer"
             >
               <span className="text-red-400/60">●</span> {t.name} — {t.players.length} players

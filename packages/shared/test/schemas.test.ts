@@ -41,7 +41,7 @@ describe('Schemas', () => {
       const result = TableConfigSchema.parse({});
       expect(result.blinds).toEqual({ small: 1, big: 2 });
       expect(result.maxSeats).toBe(9);
-      expect(result.initialStack).toBe(1000);
+      expect(result.initialStack).toBe(100);
       expect(result.actionTimeoutMs).toBe(30000);
       expect(result.minPlayersToStart).toBe(2);
     });

@@ -357,9 +357,9 @@ async function runAutonomousAgent(options: {
   const agent = new AutonomousAgent({ model, temperature: 0.3, logPath, onStep })
 
   const task =
-    `Visit ${options.skillUrl} to learn how to interact with this platform. ` +
+    `First, fetch the skill document from ${options.skillUrl} using fetch_document with documentRole: "skill" to learn how to interact with this platform. ` +
     `The server base URL is ${options.server}. ` +
-    `Register as an agent${options.name ? ` named "${options.name}"` : ` named "${displayName}"`}, ` +
+    `After reading the skill document, register as an agent${options.name ? ` named "${options.name}"` : ` named "${displayName}"`}, ` +
     `use the auto-join endpoint to join a game, and play. Continue playing until the table ends or you are told to stop.`
 
   // Graceful shutdown

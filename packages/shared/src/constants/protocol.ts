@@ -18,7 +18,7 @@ export const DEFAULT_SMALL_BLIND = 1;
 export const DEFAULT_BIG_BLIND = 2;
 
 /** Default initial stack size */
-export const DEFAULT_INITIAL_STACK = 1000;
+export const DEFAULT_INITIAL_STACK = 100;
 
 /** Default maximum seats per table */
 export const DEFAULT_MAX_SEATS = 9;

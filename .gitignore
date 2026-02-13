@@ -38,3 +38,6 @@ temp/
 
 # Supabase
 .supabase/
+
+#MD and docs
+**/local-only/**
