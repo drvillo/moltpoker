@@ -1,7 +1,7 @@
 import type { Card, GameStatePayload, LegalAction, PlayerAction } from '@moltpoker/shared';
 
 import { createAction, type PokerAgent } from './types.js';
-import { logAgentHandComplete, logAgentError } from './utils/output.js';
+import { logAgentHandComplete, logAgentError } from '../lib/output.js';
 
 /**
  * Tight agent - plays conservatively

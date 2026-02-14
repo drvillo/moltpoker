@@ -1,11 +1,11 @@
 import { generateObject } from 'ai'
 import type { LanguageModel } from 'ai'
 import { z } from 'zod'
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
-import { dirname } from 'path'
+import { existsSync, readFileSync } from 'fs'
 import type { GameStatePayload, LegalAction, PlayerAction } from '@moltpoker/shared'
 
 import { createAction, type PokerAgent } from './types.js'
+import { createJsonlLogger } from '../lib/logger.js'
 import {
   formatCards,
   formatHandHeader,
@@ -14,7 +14,7 @@ import {
   formatStackLine,
   logAgentHandComplete,
   logAgentError,
-} from './utils/output.js'
+} from '../lib/output.js'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -110,7 +110,7 @@ export class LlmAgent implements PokerAgent {
   private model: LanguageModel
   private systemPrompt: string
   private temperature: number
-  private logPath: string | null
+  private log: ReturnType<typeof createJsonlLogger>
 
   constructor(config: LlmAgentConfig) {
     const baseName = config.name ?? 'LlmAgent'
@@ -118,30 +118,18 @@ export class LlmAgent implements PokerAgent {
     this.name = `${baseName} (${modelId})`
     this.model = config.model
     this.temperature = config.temperature ?? 0.3
-    this.logPath = config.logPath ?? null
+    this.log = createJsonlLogger(config.logPath)
     if (!config.skillDocPath)
       throw new Error('LlmAgent requires a skillDocPath')
     if (!existsSync(config.skillDocPath))
       throw new Error(`Skill doc not found: ${config.skillDocPath}`)
     // skill.md IS the system prompt -- used verbatim
     this.systemPrompt = readFileSync(config.skillDocPath, 'utf-8')
-
-    if (this.logPath) mkdirSync(dirname(this.logPath), { recursive: true })
   }
 
   /** Enable JSONL logging to the given file path (creates parent dirs) */
   enableLogging(logPath: string): void {
-    mkdirSync(dirname(logPath), { recursive: true })
-    this.logPath = logPath
-  }
-
-  private appendLog(entry: Record<string, unknown>): void {
-    if (!this.logPath) return
-    try {
-      appendFileSync(this.logPath, JSON.stringify(entry) + '\n')
-    } catch {
-      // Never let log failures affect gameplay
-    }
+    this.log = createJsonlLogger(logPath)
   }
 
   async getAction(
@@ -162,7 +150,7 @@ export class LlmAgent implements PokerAgent {
       seq: state.seq,
     }
 
-    this.appendLog({
+    this.log({
       event: 'llm_prompt',
       timestamp: new Date().toISOString(),
       ...logCtx,
@@ -180,7 +168,7 @@ export class LlmAgent implements PokerAgent {
 
     const action = buildAction(object, state)
 
-    this.appendLog({
+    this.log({
       event: 'llm_response',
       timestamp: new Date().toISOString(),
       ...logCtx,

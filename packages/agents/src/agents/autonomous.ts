@@ -1,8 +1,8 @@
 import { generateText, tool, stepCountIs } from 'ai'
 import type { LanguageModel, ModelMessage } from 'ai'
 import { z } from 'zod'
-import { appendFileSync, mkdirSync } from 'fs'
-import { dirname } from 'path'
+
+import { createJsonlLogger } from '../lib/logger.js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -440,22 +440,6 @@ function trimContext(messages: ModelMessage[]): void {
   messages.push(...head, marker, ...tail)
 }
 
-// ─── Logging ─────────────────────────────────────────────────────────────────
-
-function createLogger(logPath: string | null) {
-  if (!logPath) return (_entry: Record<string, unknown>) => {}
-
-  mkdirSync(dirname(logPath), { recursive: true })
-
-  return (entry: Record<string, unknown>) => {
-    try {
-      appendFileSync(logPath, JSON.stringify(entry) + '\n')
-    } catch {
-      // Never let log failures affect the agent
-    }
-  }
-}
-
 // ─── Autonomous Agent ────────────────────────────────────────────────────────
 
 /**
@@ -473,7 +457,7 @@ export class AutonomousAgent {
   private temperature: number
   private wsManager: WebSocketManager
   private tools: ReturnType<typeof createGenericTools>
-  private log: ReturnType<typeof createLogger>
+  private log: ReturnType<typeof createJsonlLogger>
   private maxIterations: number
   private stopped = false
   private onStep: ((step: StepEvent) => void) | null
@@ -486,7 +470,7 @@ export class AutonomousAgent {
     this.maxIterations = config.maxIterations ?? 2000
     this.wsManager = new WebSocketManager()
     this.tools = createGenericTools(this.wsManager)
-    this.log = createLogger(config.logPath ?? null)
+    this.log = createJsonlLogger(config.logPath)
     this.onStep = config.onStep ?? null
     this.runtimeSystemPrompt = SYSTEM_PROMPT
     
