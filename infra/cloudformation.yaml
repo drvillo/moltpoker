@@ -1,0 +1,272 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  MoltPoker production infrastructure.
+  Provisions ECR, App Runner (API + WebSockets), and Amplify (Next.js frontend).
+
+# ─────────────────────────────────────────────────────────────
+# Parameters
+# ─────────────────────────────────────────────────────────────
+Parameters:
+  # ── General ──
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [production, staging]
+
+  # ── Supabase ──
+  SupabaseUrl:
+    Type: String
+    Description: Supabase project URL (e.g. https://xyz.supabase.co)
+    NoEcho: false
+
+  SupabaseServiceRoleKey:
+    Type: String
+    Description: Supabase service_role key (server-only, secret)
+    NoEcho: true
+
+  SupabaseAnonKey:
+    Type: String
+    Description: Supabase anon/public key (used by the web app)
+    NoEcho: false
+
+  # ── API Secrets ──
+  SessionJwtSecret:
+    Type: String
+    Description: Secret used to sign agent session JWTs
+    NoEcho: true
+
+  AdminEmails:
+    Type: String
+    Description: Comma-separated admin email allow-list
+    Default: ""
+
+  # ── Amplify / GitHub ──
+  GitHubRepository:
+    Type: String
+    Description: "GitHub repository URL (https://github.com/owner/repo)"
+
+  GitHubAccessToken:
+    Type: String
+    Description: GitHub personal access token (for Amplify to clone the repo)
+    NoEcho: true
+
+  GitHubBranch:
+    Type: String
+    Default: main
+    Description: Branch to deploy from
+
+  # ── Networking ──
+  ApiCustomDomain:
+    Type: String
+    Default: ""
+    Description: "(Optional) Custom domain for the API, e.g. api.moltpoker.com"
+
+  WebCustomDomain:
+    Type: String
+    Default: ""
+    Description: "(Optional) Custom domain for the web app, e.g. moltpoker.com"
+
+Conditions:
+  HasApiDomain: !Not [!Equals [!Ref ApiCustomDomain, ""]]
+  HasWebDomain: !Not [!Equals [!Ref WebCustomDomain, ""]]
+
+# ─────────────────────────────────────────────────────────────
+# Resources
+# ─────────────────────────────────────────────────────────────
+Resources:
+
+  # ────────────────────── ECR ──────────────────────
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: moltpoker-api
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep only the last 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+
+  # ────────────────────── IAM ──────────────────────
+  AppRunnerEcrAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "moltpoker-apprunner-ecr-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "moltpoker-apprunner-instance-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      # Add policies here if the API needs AWS services (S3, SQS, etc.)
+
+  # ────────────────────── App Runner ──────────────────────
+  AppRunnerService:
+    Type: AWS::AppRunner::Service
+    DependsOn: EcrRepository
+    Properties:
+      ServiceName: !Sub "moltpoker-api-${Environment}"
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerEcrAccessRole.Arn
+        AutoDeploymentsEnabled: true
+        ImageRepository:
+          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/moltpoker-api:latest"
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8080"
+            RuntimeEnvironmentVariables:
+              - Name: NODE_ENV
+                Value: production
+              - Name: PORT
+                Value: "8080"
+              - Name: API_HOST
+                Value: "0.0.0.0"
+              - Name: SUPABASE_URL
+                Value: !Ref SupabaseUrl
+              - Name: SUPABASE_SERVICE_ROLE_KEY
+                Value: !Ref SupabaseServiceRoleKey
+              - Name: SESSION_JWT_SECRET
+                Value: !Ref SessionJwtSecret
+              - Name: ADMIN_AUTH_ENABLED
+                Value: "true"
+              - Name: ADMIN_EMAILS
+                Value: !Ref AdminEmails
+              # PUBLIC_BASE_URL is set after we know the service URL.
+              # Use the ApiCustomDomain if provided; otherwise use
+              # the auto-generated App Runner URL set via the console
+              # or a post-deploy script.
+      InstanceConfiguration:
+        Cpu: "0.25 vCPU"
+        Memory: "0.5 GB"
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      HealthCheckConfiguration:
+        Protocol: HTTP
+        Path: /health
+        Interval: 10
+        Timeout: 5
+        HealthyThreshold: 1
+        UnhealthyThreshold: 5
+
+  # ────────────────────── Amplify (Web) ──────────────────────
+  AmplifyApp:
+    Type: AWS::Amplify::App
+    Properties:
+      Name: !Sub "moltpoker-web-${Environment}"
+      Repository: !Ref GitHubRepository
+      AccessToken: !Ref GitHubAccessToken
+      BuildSpec: |
+        version: 1
+        applications:
+          - appRoot: apps/web
+            frontend:
+              phases:
+                preBuild:
+                  commands:
+                    - corepack enable
+                    - corepack prepare pnpm@9 --activate
+                    - cd ../.. && pnpm install --frozen-lockfile
+                    - cd ../.. && pnpm --filter @moltpoker/shared build
+                build:
+                  commands:
+                    - pnpm run build
+              artifacts:
+                baseDirectory: .next
+                files:
+                  - "**/*"
+              cache:
+                paths:
+                  - "../../node_modules/**/*"
+                  - "node_modules/**/*"
+                  - ".next/cache/**/*"
+      EnvironmentVariables:
+        - Name: NEXT_PUBLIC_SUPABASE_URL
+          Value: !Ref SupabaseUrl
+        - Name: NEXT_PUBLIC_SUPABASE_ANON_KEY
+          Value: !Ref SupabaseAnonKey
+        - Name: NEXT_PUBLIC_API_URL
+          Value: !If
+            - HasApiDomain
+            - !Sub "https://${ApiCustomDomain}"
+            - !Sub "https://${AppRunnerService.ServiceUrl}"
+        - Name: NEXT_PUBLIC_SITE_URL
+          Value: !If
+            - HasWebDomain
+            - !Sub "https://${WebCustomDomain}"
+            - ""          # Amplify auto-provides its default URL
+        - Name: ADMIN_AUTH_ENABLED
+          Value: "true"
+        - Name: ADMIN_EMAILS
+          Value: !Ref AdminEmails
+        - Name: AMPLIFY_MONOREPO_APP_ROOT
+          Value: apps/web
+      Platform: WEB_COMPUTE          # SSR support for Next.js
+
+  AmplifyBranch:
+    Type: AWS::Amplify::Branch
+    Properties:
+      AppId: !GetAtt AmplifyApp.AppId
+      BranchName: !Ref GitHubBranch
+      EnableAutoBuild: true
+      Stage: PRODUCTION
+      Framework: "Next.js - SSR"
+
+# ─────────────────────────────────────────────────────────────
+# Outputs
+# ─────────────────────────────────────────────────────────────
+Outputs:
+  EcrRepositoryUri:
+    Description: ECR repository URI (for docker push)
+    Value: !GetAtt EcrRepository.RepositoryUri
+
+  AppRunnerServiceUrl:
+    Description: App Runner service URL (API + WebSockets)
+    Value: !Sub "https://${AppRunnerService.ServiceUrl}"
+
+  AppRunnerServiceArn:
+    Description: App Runner service ARN
+    Value: !GetAtt AppRunnerService.ServiceArn
+
+  AmplifyAppId:
+    Description: Amplify application ID
+    Value: !GetAtt AmplifyApp.AppId
+
+  AmplifyDefaultDomain:
+    Description: Amplify default domain
+    Value: !Sub "https://${GitHubBranch}.${AmplifyApp.DefaultDomain}"
+
+  PostDeployNote:
+    Description: >
+      After the first deploy, copy the AppRunnerServiceUrl and set
+      PUBLIC_BASE_URL on the App Runner service (console or CLI).
+      Also update NEXT_PUBLIC_API_URL in Amplify if you are not using
+      a custom domain.
+    Value: "See docs/DEPLOYMENT.md for post-deploy steps."
