@@ -1,0 +1,32 @@
+# ─────────────────────────────────────────────────────────────
+# AWS Amplify build specification for apps/web (Next.js)
+# Handles pnpm monorepo workspace install + shared package build.
+#
+# In the Amplify Console set the "App root" to: apps/web
+# ─────────────────────────────────────────────────────────────
+version: 1
+applications:
+  - appRoot: apps/web
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            # Enable pnpm via corepack (bundled with Node 20+)
+            - corepack enable
+            - corepack prepare pnpm@9 --activate
+            # Install ALL workspace dependencies from the repo root
+            - cd ../.. && pnpm install --frozen-lockfile
+            # Build the shared package that apps/web depends on
+            - cd ../.. && pnpm --filter @moltpoker/shared build
+        build:
+          commands:
+            - pnpm run build
+      artifacts:
+        baseDirectory: .next
+        files:
+          - "**/*"
+      cache:
+        paths:
+          - "../../node_modules/**/*"
+          - "node_modules/**/*"
+          - ".next/cache/**/*"
