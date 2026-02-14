@@ -17,6 +17,9 @@ export {
   type ToolStep,
 } from './autonomous.js';
 
+// Skill-runner agent (YAML-contract-driven, domain-agnostic protocol engine)
+export { SkillRunner, type SkillRunnerConfig } from './skill-runner.js';
+
 // Output formatting utilities
 export {
   formatCards,

@@ -13,6 +13,7 @@ import type { StepEvent } from './autonomous.js';
 import { CallStationAgent } from './callStation.js';
 import { LlmAgent } from './llm.js';
 import { RandomAgent } from './random.js';
+import { SkillRunner } from './skill-runner.js';
 import { TightAgent } from './tight.js';
 import type { PokerAgent } from './types.js';
 import {
@@ -369,9 +370,176 @@ async function runAutonomousAgent(options: {
   })
 
   console.log(`Starting ${displayName}...`)
-  if (logPath) console.log(`Logging to: ${logPath}`)
+  if (logPath) console.log(`LLM logging enabled: ${logPath}`)
   console.log('Agent running. Press Ctrl+C to stop.')
   await agent.run(task)
+}
+
+// Run skill-runner agent (YAML-contract-driven, domain-agnostic)
+async function runSkillRunner(options: {
+  server: string;
+  name?: string;
+  model?: string;
+  skillUrl?: string;
+  llmLog?: boolean;
+}): Promise<void> {
+  if (!options.model)
+    throw new Error('--model is required for skill-runner agent (e.g. openai:gpt-4.1)')
+  if (!options.skillUrl)
+    throw new Error('--skill-url is required for skill-runner agent')
+
+  const model = await resolveModel(options.model)
+
+  const logPath = options.llmLog
+    ? join(process.cwd(), 'logs', `skill-runner-${Date.now()}.jsonl`)
+    : undefined
+
+  const displayName = options.name ?? `SkillRunner-${options.model.split(':').pop()}`
+  const onStep = createSkillRunnerDisplayFormatter(displayName)
+
+  const runner = new SkillRunner({
+    model,
+    temperature: 0.3,
+    logPath,
+    onStep,
+  })
+
+  // Inject BASE_URL into the runner's variable store via the skill URL
+  // The skill.md uses {BASE_URL} which gets replaced server-side.
+  // For skill-runner, we also store it so it's available for interpolation.
+
+  // Graceful shutdown
+  process.on('SIGINT', () => {
+    console.log('\nStopping skill-runner agent...')
+    runner.stop()
+  })
+
+  console.log(`Starting ${displayName}...`)
+  if (logPath) console.log(`LLM logging enabled: ${logPath}`)
+  console.log('Agent running. Press Ctrl+C to stop.')
+  await runner.run(options.skillUrl, displayName)
+}
+
+/**
+ * Display formatter for SkillRunner step events.
+ * Interprets the raw WS messages emitted by the runner for human-readable output.
+ */
+function createSkillRunnerDisplayFormatter(agentName: string): (step: unknown) => void {
+  let mySeatId = -1
+
+  return (step: unknown) => {
+    const event = step as Record<string, unknown>
+    if (event.type !== 'ws_message') {
+      // Bootstrap events
+      if (event.type === 'bootstrap') {
+        const id = event.stepId as string
+        const result = event.result as Record<string, unknown> | null
+        if (id === 'register') {
+          console.log('Registering new agent...')
+          if (result?.agent_id) console.log(`Registered as ${result.agent_id}`)
+        } else if (id === 'join') {
+          console.log('Auto-joining a table...')
+          if (result?.table_id) console.log(`Joined table ${result.table_id}`)
+          if (result?.seat_id !== undefined) {
+            mySeatId = result.seat_id as number
+            console.log(`Joined as seat ${result.seat_id}`)
+          }
+        }
+      }
+      return
+    }
+
+    const msg = event.message as Record<string, unknown>
+    if (!msg) return
+
+    switch (msg.type) {
+      case 'welcome':
+        mySeatId = (msg.seat ?? -1) as number
+        console.log(`Connected! Seat: ${mySeatId}, Timeout: ${msg.timeout}ms`)
+        break
+
+      case 'game_state': {
+        const totalPot = (msg.pot ?? 0) as number
+        const handNumber = (msg.hand ?? msg.hand_number) as number
+        const phase = msg.phase as string
+        const communityCards = normalizeCards(msg.board)
+
+        console.log(`\n${formatHandHeader({ handNumber, phase, totalPot })}`)
+        console.log(formatCommunityLine(communityCards as never[]))
+
+        const players = (msg.players ?? []) as Array<Record<string, unknown>>
+        const myPlayer = players.find((p) => p.seat === mySeatId)
+        const myCards = normalizeCards(myPlayer?.cards)
+
+        if (myCards.length > 0) {
+          console.log(formatMyCardsLine({ cards: myCards as never[], seatId: mySeatId }))
+          console.log(formatStackLine({
+            stack: myPlayer?.stack as number,
+            toCall: (msg.toCall ?? msg.to_call ?? 0) as number,
+          }))
+        }
+
+        const currentSeat = msg.turn as number | null | undefined
+        const legalActions = normalizeLegalActions(msg.actions)
+        if (currentSeat === mySeatId && legalActions.length > 0)
+          console.log(formatLegalActionsLine(legalActions as never[]))
+
+        break
+      }
+
+      case 'ack':
+        console.log(`Action acknowledged (turn_token: ${msg.turn_token}, seq: ${msg.seq})`)
+        break
+
+      case 'error':
+        console.error(`Error: ${msg.code} - ${msg.message}`)
+        break
+
+      case 'hand_complete': {
+        const handNumber = (msg.hand ?? msg.hand_number) as number
+        console.log(`\n${formatHandCompleteHeader(handNumber)}`)
+        const results = (msg.results ?? []) as Array<Record<string, unknown>>
+        for (const r of results) {
+          const seatId = (r.seat ?? r.seatId) as number
+          const isMe = seatId === mySeatId
+          const cards = normalizeCards(r.cards ?? r.holeCards)
+          const handRank = (r.rank ?? r.handRank) as string | null | undefined
+          const winnings = (r.won ?? r.winnings ?? 0) as number
+          console.log(formatSeatResultLine({
+            seatId,
+            isMe,
+            cards: cards as never[],
+            handRank,
+            winnings,
+          }))
+          if (isMe && winnings > 0)
+            console.log(`[${agentName}] Hand ${handNumber}: Won ${winnings}!`)
+        }
+        console.log('')
+        break
+      }
+
+      case 'table_status':
+        const tableStatus = (msg.payload && typeof msg.payload === 'object'
+          ? msg.payload as Record<string, unknown>
+          : msg) as Record<string, unknown>
+        if (tableStatus.status === 'ended') {
+          console.log(`\nTable status: ended (${(tableStatus.reason as string) ?? 'table ended'})`)
+        } else {
+          console.log(`Table status: ${tableStatus.status} (${tableStatus.current_players}/${tableStatus.min_players_to_start} players)`)
+          if (tableStatus.status === 'waiting') console.log('Waiting for more players to join...')
+        }
+        break
+
+      case 'player_joined':
+        console.log(`Player joined: seat ${msg.seatId ?? msg.seat} (${msg.agentName || msg.agentId || 'unknown'})`)
+        break
+
+      case 'player_left':
+        console.log(`Player left: seat ${msg.seatId ?? msg.seat}`)
+        break
+    }
+  }
 }
 
 // Run agent
@@ -389,6 +557,12 @@ async function runAgent(options: {
   // Autonomous agent — completely self-contained, no SDK interaction needed
   if (options.type.toLowerCase() === 'autonomous') {
     await runAutonomousAgent(options)
+    return
+  }
+
+  // Skill-runner agent — YAML-contract-driven, domain-agnostic
+  if (options.type.toLowerCase() === 'skill-runner') {
+    await runSkillRunner(options)
     return
   }
 
@@ -636,7 +810,7 @@ program
   .name('molt-agent')
   .description('Run a MoltPoker reference agent')
   .version('0.1.0')
-  .requiredOption('-t, --type <type>', 'Agent type: random, tight, callstation, llm, autonomous')
+  .requiredOption('-t, --type <type>', 'Agent type: random, tight, callstation, llm, autonomous, skill-runner')
   .option('-s, --server <url>', 'Server URL', 'http://localhost:3000')
   .option('--table-id <id>', 'Specific table ID to join')
   .option('--name <name>', 'Agent display name')
