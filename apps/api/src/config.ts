@@ -57,6 +57,11 @@ export const config = {
   // Table Lifecycle
   tableAbandonmentGraceMs: parseInt(process.env.TABLE_ABANDONMENT_GRACE_MS || '60000', 10),
 
+  // Logging (LOG_LEVEL overrides; defaults: debug in dev, info in prod)
+  logLevel:
+    process.env.LOG_LEVEL ||
+    (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+
   // Public URL (built from components)
   get publicBaseUrl(): string {
     return buildPublicBaseUrl();

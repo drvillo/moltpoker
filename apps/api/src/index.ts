@@ -33,16 +33,17 @@ async function cleanupStaleTables(): Promise<number> {
 }
 
 async function main() {
+  const usePrettyLogs =
+    config.nodeEnv === 'development' || config.logLevel === 'debug';
   const app = fastify({
     logger: {
-      level: config.nodeEnv === 'production' ? 'info' : 'debug',
-      transport:
-        config.nodeEnv === 'development'
-          ? {
-              target: 'pino-pretty',
-              options: { colorize: true },
-            }
-          : undefined,
+      level: config.logLevel,
+      transport: usePrettyLogs
+        ? {
+            target: 'pino-pretty',
+            options: { colorize: true },
+          }
+        : undefined,
     },
   });
 

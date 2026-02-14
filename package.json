@@ -23,9 +23,9 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean && rm -rf node_modules",
+    "run:api:docker": "./scripts/run-api-docker.sh",
     "db:migrate": "supabase db push",
-    "db:reset": "supabase db reset",
-    "prepare": "husky install"
+    "db:reset": "supabase db reset"
   },
   "keywords": [
     "poker",
@@ -50,7 +50,6 @@
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
-    "husky": "^8.0.3",
     "prettier": "^3.2.4",
     "typescript": "^5.3.3",
     "vitest": "^1.2.0"

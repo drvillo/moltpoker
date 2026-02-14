@@ -38,7 +38,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/poker/package.json ./packages/poker/
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # Copy compiled output from the build stage
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
