@@ -42,7 +42,7 @@ function buildPublicBaseUrl(): string {
 export const config = {
   // Server
   port: parseInt(process.env.API_PORT || process.env.PORT || '9000', 10),
-  host: process.env.API_HOST || process.env.HOST || 'localhost',
+  host: process.env.API_HOST || process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost'),
   nodeEnv: process.env.NODE_ENV || 'development',
 
   // Supabase

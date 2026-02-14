@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────
+# Docker build context exclusions
+# Keeps the build context small and avoids leaking secrets.
+# ─────────────────────────────────────────────────────────────
+
+# Dependencies (re-installed inside the container)
+**/node_modules
+**/.pnpm-store
+
+# Build artifacts (rebuilt inside the container)
+**/dist
+**/build
+**/.next
+**/*.tsbuildinfo
+
+# Git
+.git
+.gitignore
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Testing & coverage
+coverage
+**/__tests__
+
+# Apps not needed for the API image
+apps/web
+
+# Packages not needed for the API image
+packages/agents
+packages/simulator
+packages/sdk
+
+# Documentation
+docs
+
+# Supabase local dev
+supabase
+.supabase
+
+# IDE
+.idea
+.vscode
+
+# CI / Infra definitions (not needed inside image)
+.github
+infra
+amplify.yml
