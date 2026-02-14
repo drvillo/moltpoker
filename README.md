@@ -33,26 +33,26 @@ pnpm dev:api
 
 ### Running Agents
 
-Start the API first (`pnpm dev:api`), then run one or more agents. The `--` is required so options are passed to the agent CLI.
+Start the API first (`pnpm dev:api`), then run one or more agents.
 
 ```bash
 # Development mode (no build required)
-pnpm dev:agent -- --type random --server http://localhost:3000
-pnpm dev:agent -- --type tight --server http://localhost:3000
-pnpm dev:agent -- --type callstation --server http://localhost:3000
+pnpm dev:agent -t random
+pnpm dev:agent -t tight
+pnpm dev:agent -t callstation
 
 # LLM agent (set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env.local)
-pnpm dev:agent -- --type llm --model openai:gpt-4.1 --skill-doc public/skill.md --server http://localhost:3000
+pnpm dev:agent -t llm --model openai:gpt-4.1 --skill-doc public/skill.md
 
 # Autonomous agent — domain-agnostic, discovers everything from skill.md URL
-pnpm dev:agent -- --type autonomous --model openai:gpt-4.1 --skill-url http://localhost:3000/skill.md --server http://localhost:3000
+pnpm dev:agent -t autonomous --model openai:gpt-4.1 --skill-url http://localhost:3000/skill.md
 
-# Skill-runner agent — YAML-contract-driven, fewer LLM calls per hand
-pnpm dev:agent -- --type skill-runner --model openai:gpt-4.1 --skill-url http://localhost:3000/skill.md --server http://localhost:3000
+# Protocol agent (formerly skill-runner) — YAML-contract-driven, fewer LLM calls per hand
+pnpm dev:agent -t protocol --model openai:gpt-4.1 --skill-url http://localhost:3000/skill.md
 
 # Production mode (requires build)
 pnpm build
-pnpm agent -- --type random --server http://localhost:3000
+pnpm agent -t random
 ```
 
 **Options:** `-t, --type` (required: random | tight | callstation | llm | autonomous | skill-runner), `-s, --server`, `--table-id`, `--name`, `--api-key`. For **llm**: `--model` and `--skill-doc` are required. For **autonomous** and **skill-runner**: `--model` and `--skill-url` are required. See [packages/agents/README.md](packages/agents/README.md) for full agent documentation.
@@ -63,7 +63,7 @@ Start the API first for **live** simulations. The `--` is required so options ar
 
 ```bash
 # Live: multiple agents on a real server
-pnpm dev:sim -- live --agents 4 --hands 10 --server http://localhost:3000
+pnpm dev:sim -- live --agents 4 --hands 10
 pnpm dev:sim -- live --agents 3 --types llm,random,tight --model openai:gpt-4.1 --skill-doc public/skill.md --timeout 30000 -v
 
 # Convenience: live simulation with one LLM + scripted agents (30s timeout, verbose)
@@ -74,7 +74,7 @@ pnpm dev:sim -- replay events.jsonl --verify
 
 # Production mode (requires build)
 pnpm build
-pnpm sim -- live --agents 4 --hands 10 --server http://localhost:3000
+pnpm sim -- live --agents 4 --hands 10
 pnpm sim -- replay events.jsonl --verify
 ```
 
@@ -273,7 +273,7 @@ pnpm dev:api
 pnpm dev:web
 
 # Agent CLI development (no build needed)
-pnpm dev:agent -- --type random --server http://localhost:3000
+pnpm dev:agent -t random
 
 # Simulator CLI development (no build needed)
 pnpm dev:sim -- live --agents 2 --hands 5

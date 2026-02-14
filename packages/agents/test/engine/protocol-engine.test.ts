@@ -11,7 +11,7 @@ import {
   reduceState,
   computeSafetyAction,
   createEngineContext,
-} from '../src/protocol-engine.js'
+} from '../../src/engine/protocol-engine.js'
 
 // We need a mock model for createEngineContext — just a stub
 const stubModel = {} as Parameters<typeof createEngineContext>[0]['model']

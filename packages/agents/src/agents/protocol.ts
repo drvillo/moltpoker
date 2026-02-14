@@ -1,18 +1,17 @@
 /**
- * SkillRunner — domain-agnostic agent that interprets a skill.md YAML contract.
+ * ProtocolAgent — domain-agnostic agent that interprets a skill.md YAML contract.
  *
  * Fetches a skill document at runtime, parses its YAML frontmatter as a
  * protocol program, and walks the tree using the protocol engine. The only
  * domain knowledge lives in the skill document itself.
  *
- * @module skill-runner
+ * @module agents/protocol
  */
 
 import matter from 'gray-matter'
 import type { LanguageModel } from 'ai'
-import { appendFileSync, existsSync, mkdirSync } from 'fs'
-import { dirname } from 'path'
 
+import { createJsonlLogger } from '../lib/logger.js'
 import {
   type EngineContext,
   buildZodSchema,
@@ -27,33 +26,25 @@ import {
   matchMessage,
   reduceState,
   wsSend,
-} from './protocol-engine.js'
+} from '../engine/protocol-engine.js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface SkillRunnerConfig {
+export interface ProtocolAgentConfig {
   model: LanguageModel
   temperature?: number
   logPath?: string
   onStep?: (event: unknown) => void
 }
 
-// ─── SkillRunner ─────────────────────────────────────────────────────────────
+// ─── ProtocolAgent ───────────────────────────────────────────────────────────
 
-export class SkillRunner {
-  readonly name: string = 'SkillRunner'
+export class ProtocolAgent {
+  readonly name: string = 'ProtocolAgent'
   private engine: EngineContext
 
-  constructor(config: SkillRunnerConfig) {
-    // Set up JSONL logging if path provided
-    let logFn: (entry: Record<string, unknown>) => void = () => {}
-    if (config.logPath) {
-      const dir = dirname(config.logPath)
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-      logFn = (entry: Record<string, unknown>) => {
-        appendFileSync(config.logPath!, JSON.stringify({ ts: Date.now(), ...entry }) + '\n')
-      }
-    }
+  constructor(config: ProtocolAgentConfig) {
+    const logFn = createJsonlLogger(config.logPath)
 
     this.engine = createEngineContext({
       model: config.model,
@@ -62,7 +53,7 @@ export class SkillRunner {
     })
   }
 
-  /** Signal the runner to stop after the current iteration. */
+  /** Signal the agent to stop after the current iteration. */
   stop(): void {
     this.engine.stopped = true
     if (this.engine.ws && this.engine.ws.readyState === WebSocket.OPEN) {

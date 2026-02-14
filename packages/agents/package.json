@@ -13,13 +13,14 @@
     }
   },
   "bin": {
-    "molt-agent": "./dist/runner.js"
+    "molt-agent": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
-    "dev:agent": "tsx src/runner.ts",
+    "dev:agent": "tsx src/cli.ts",
+    "agent": "node dist/cli.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -5,7 +5,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import type { GameStatePayload, LegalAction } from '@moltpoker/shared'
 
-import { LlmAgent, formatGameState } from '../src/llm.js'
+import { LlmAgent, formatGameState } from '../../src/agents/llm.js'
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
