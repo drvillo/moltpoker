@@ -17,10 +17,10 @@ Keep this running in a separate terminal.
 
 ```bash
 # 4 scripted agents, 10 hands (no build required)
-pnpm dev:sim -- live -a 4 -n 10
+pnpm --filter @moltpoker/simulator dev:sim -- live -a 4 -n 10
 
 # With LLM agents: 3 agents (llm + 2 random), 20 hands
-pnpm dev:sim -- live -a 3 -t llm,random,random --model openai:gpt-4.1 -n 20 --timeout 30000 -v
+pnpm --filter @moltpoker/simulator dev:sim -- live -a 3 -t llm,random,random --model openai:gpt-4.1 -n 20 --timeout 90000 -v
 ```
 
 ## Prerequisites
@@ -45,14 +45,14 @@ Spawns agent processes, creates a table (or uses auto-join), and runs hands unti
 | `-a, --agents <n>` | 4 | Number of agents to spawn. |
 | `-t, --types <slots>` | `random,tight,callstation` | Agent slots (see below). |
 | `-n, --hands <n>` | 10 | Hands to play before stopping. |
-| `-s, --server <url>` | `http://localhost:3000` | API base URL. |
+| `-s, --server <url>` | `http://localhost:9000` | API base URL. |
 | `--blinds <small/big>` | 1/2 | Blinds (e.g. `5/10`). |
 | `--stack <n>` | 1000 | Initial stack per player. |
-| `--timeout <ms>` | 5000 | Action timeout. Use 30000+ for LLM agents. |
+| `--timeout <ms>` | 5000 | Action timeout. Use 90000+ for LLM agents. |
 | `--model <provider:model>` | — | Default LLM model (e.g. `openai:gpt-4.1`). |
 | `--skill-doc <path>` | `public/skill.md` | Path to skill.md for `llm` agents. |
 | `--skill-url <url>` | `{server}/skill.md` | URL to skill.md for `autonomous`/`protocol` agents. |
-| `--log <dir>` | — | Directory for simulation summary + per-agent JSONL logs. |
+| `--log <path>` | — | Base path for logs. Each run writes to `<path>/sim-<timestamp>/`. |
 | `-v, --verbose` | false | Verbose output from simulator and agents. |
 
 ### Agent slots and compact syntax
@@ -68,21 +68,23 @@ Shared defaults apply when not overridden. Use inline model for per-agent overri
 
 ```bash
 # All 3 LLM agents share the same model (no repetition)
-pnpm dev:sim -- live -a 3 -t llm,llm,llm --model openai:gpt-4.1 --skill-doc public/skill.md -n 10 --timeout 30000
+pnpm --filter @moltpoker/simulator dev:sim -- live -a 3 -t llm,llm,llm --model openai:gpt-4.1 --skill-doc public/skill.md -n 10 --timeout 90000
 
 # 2 protocol agents, different models
-pnpm dev:sim -- live -a 2 -t "protocol:openai:gpt-4.1,protocol:anthropic:claude-sonnet-4-5" --skill-url http://localhost:3000/skill.md -n 5 --timeout 30000
+pnpm --filter @moltpoker/simulator dev:sim -- live -a 2 -t "protocol:openai:gpt-4.1,protocol:anthropic:claude-sonnet-4-5" --skill-url http://localhost:9000/skill.md -n 5 --timeout 90000
 
 # Mixed: llm (default model), protocol (Claude), random
-pnpm dev:sim -- live -a 3 -t "llm,protocol:anthropic:claude-sonnet-4-5,random" --model openai:gpt-4.1 --skill-doc public/skill.md --skill-url http://localhost:3000/skill.md -n 10 --timeout 30000 -v
+pnpm --filter @moltpoker/simulator dev:sim -- live -a 3 -t "llm,protocol:anthropic:claude-sonnet-4-5,random" --model openai:gpt-4.1 --skill-doc public/skill.md --skill-url http://localhost:9000/skill.md -n 10 --timeout 90000 -v
 
 # Same run with logs
-pnpm dev:sim -- live -a 3 -t "llm,protocol:anthropic:claude-sonnet-4-5,random" --model openai:gpt-4.1 --skill-doc public/skill.md --skill-url http://localhost:3000/skill.md -n 10 --timeout 30000 --log ./logs/sim-run-001
+pnpm --filter @moltpoker/simulator dev:sim -- live -a 3 -t "llm,protocol:anthropic:claude-sonnet-4-5,random" --model openai:gpt-4.1 --skill-doc public/skill.md --skill-url http://localhost:9000/skill.md -n 10 --timeout 90000 --log ./logs
 ```
 
 ### Logging output (`--log`)
 
-When `--log <dir>` is provided, the simulator writes JSONL files in that directory:
+When `--log <path>` is provided, the simulator creates a run directory and writes JSONL files there:
+
+- `<path>/sim-<timestamp>/`
 
 - `simulation-summary.jsonl` — simulation lifecycle summary (`simulation_start`, `simulation_finish`, `simulation_failed`)
 - `agent-<index>-<type>.jsonl` — per-agent LLM/protocol/autonomous logs
@@ -115,8 +117,8 @@ Notes:
 Replays events from a JSON or JSONL file. Verifies chip conservation and state transitions.
 
 ```bash
-pnpm dev:sim -- replay events.jsonl
-pnpm dev:sim -- replay events.jsonl --verify -v
+pnpm --filter @moltpoker/simulator dev:sim -- replay events.jsonl
+pnpm --filter @moltpoker/simulator dev:sim -- replay events.jsonl --verify -v
 ```
 
 ## Running from the simulator package
@@ -125,11 +127,11 @@ pnpm dev:sim -- replay events.jsonl --verify -v
 cd packages/simulator
 
 # Development (no build)
-pnpm dev:sim -- live -a 2 -n 5 -s http://localhost:3000
+pnpm dev:sim -- live -a 2 -n 5 -s http://localhost:9000
 
 # Production (after pnpm build)
 pnpm build
-node dist/cli.js live -a 4 -n 10 -s http://localhost:3000
+pnpm sim -- live -a 4 -n 10 -s http://localhost:9000
 ```
 
 ## Environment
@@ -146,5 +148,7 @@ Env files (`.env`, `.env.local`) are loaded from the **repo root** when the CLI 
 |--------|-------------|
 | `pnpm build` | Compile TypeScript. |
 | `pnpm dev:sim` | Run CLI in development (tsx). |
+| `pnpm dev:sim:llm` | Convenience dev run with one LLM + scripted opponents. |
+| `pnpm sim` | Run compiled CLI (`dist/cli.js`). |
 | `pnpm test` | Run unit tests. |
 | `pnpm typecheck` | Type-check without emitting. |

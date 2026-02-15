@@ -20,6 +20,8 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "dev:sim": "tsx src/cli.ts",
+    "dev:sim:llm": "tsx src/cli.ts live --agents 3 --types llm,random,tight --model openai:gpt-4.1 --skill-doc public/skill.md --timeout 30000 -v",
+    "sim": "node dist/cli.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -58,9 +58,13 @@ program
     '--skill-url <url>',
     'URL to skill.md for autonomous/protocol agents (default: {server}/skill.md)',
   )
-  .option('--log <dir>', 'Directory for per-agent logs and simulation summary JSONL')
+  .option('--log <path>', 'Base path for logs (run directory will be sim-<timestamp>)')
   .option('-v, --verbose', 'Verbose output')
   .action(async (options) => {
+    const runTimestamp = Date.now();
+    const runLogDir = options.log
+      ? path.join(options.log, `sim-${runTimestamp}`)
+      : undefined;
     try {
       const blinds = options.blinds.split('/').map(Number);
       const agentSlots = parseAgentSlots(options.types);
@@ -88,8 +92,8 @@ program
         }
       }
 
-      const summaryLogPath = options.log
-        ? path.join(options.log, 'simulation-summary.jsonl')
+      const summaryLogPath = runLogDir
+        ? path.join(runLogDir, 'simulation-summary.jsonl')
         : undefined;
       const summaryLog = createJsonlLogger(summaryLogPath);
       const startedAt = Date.now();
@@ -125,13 +129,14 @@ program
         skillDocPath: options.skillDoc,
         skillUrl,
         agentBinPath,
-        logDir: options.log,
+        logDir: runLogDir,
       });
 
       console.log('Starting live simulation...');
       console.log(`Agents: ${options.agents} (${options.types})`);
       if (options.model) console.log(`Default LLM model: ${options.model}`);
       if (skillUrl) console.log(`Skill URL: ${skillUrl}`);
+      if (runLogDir) console.log(`Log directory: ${runLogDir}`);
       console.log(`Hands: ${options.hands}`);
       console.log(`Server: ${options.server}`);
 
@@ -157,8 +162,8 @@ program
         }
       }
     } catch (err) {
-      if (options?.log) {
-        const failureLog = createJsonlLogger(path.join(options.log, 'simulation-summary.jsonl'));
+      if (runLogDir) {
+        const failureLog = createJsonlLogger(path.join(runLogDir, 'simulation-summary.jsonl'));
         failureLog({
           event: 'simulation_failed',
           finishedAt: Date.now(),
