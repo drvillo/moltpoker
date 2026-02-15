@@ -1,10 +1,59 @@
+import { existsSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { spawn, type ChildProcess } from 'child_process';
 import WebSocket from 'ws';
+
+/** Parsed agent slot: type plus optional inline model override (e.g. llm:anthropic:claude-sonnet-4-5) */
+export interface AgentSlot {
+  type: string;
+  model?: string;
+}
+
+/**
+ * Parse compact slot syntax: "type" or "type:provider:model".
+ * E.g. "llm", "llm:anthropic:claude-sonnet-4-5", "protocol:openai:gpt-4.1"
+ */
+export function parseAgentSlots(spec: string): AgentSlot[] {
+  return spec.split(',').map((s) => {
+    const t = s.trim();
+    const firstColon = t.indexOf(':');
+    if (firstColon < 0) return { type: t };
+    const type = t.slice(0, firstColon);
+    const model = t.slice(firstColon + 1);
+    if (!model || !model.includes(':')) return { type: t };
+    return { type, model };
+  });
+}
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function findRepoRoot(startDir: string): string {
+  let dir = path.resolve(startDir);
+  const root = path.parse(dir).root;
+  while (dir !== root) {
+    if (existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return dir;
+    dir = path.dirname(dir);
+  }
+  return process.cwd();
+}
+
+function sanitizeNodeOptionsForChild(raw: string | undefined): string | undefined {
+  if (!raw) return raw;
+  // Child agents run built dist JS via plain node. Inheriting --conditions=development
+  // can force workspace packages to resolve to src/*.ts entrypoints and crash.
+  const sanitized = raw
+    .replace(/--conditions=development/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return sanitized.length > 0 ? sanitized : undefined;
+}
 
 export interface LiveSimulatorOptions {
   serverUrl: string;
   agentCount: number;
-  agentTypes: string[];
+  /** Parsed agent slots (type + optional model). Cycled when agentCount > slots.length. */
+  agentSlots: AgentSlot[];
   handsToPlay: number;
   tableConfig?: {
     blinds?: { small: number; big: number };
@@ -14,14 +63,18 @@ export interface LiveSimulatorOptions {
   verbose?: boolean;
   /** Service role key for admin API authentication */
   serviceRoleKey?: string;
-  /** LLM model spec for agents of type "llm" or "autonomous" (e.g. "openai:gpt-4.1") */
+  /** Default LLM model for llm/autonomous/protocol agents (e.g. "openai:gpt-4.1") */
   llmModel?: string;
-  /** Path to skill.md file for LLM agents */
+  /** Default path to skill.md for llm agents */
   skillDocPath?: string;
-  /** URL to skill.md for autonomous agents (e.g. "http://localhost:3000/skill.md") */
+  /** Default URL to skill.md for autonomous/protocol agents (e.g. "http://localhost:3000/skill.md") */
   skillUrl?: string;
+  /** Path to molt-agent binary (default: resolved from workspace root) */
+  agentBinPath?: string;
   /** Use auto-join instead of admin table creation (default: true) */
   useAutoJoin?: boolean;
+  /** Directory where per-agent logs are written */
+  logDir?: string;
 }
 
 export interface LiveSimulatorResult {
@@ -86,8 +139,8 @@ export class LiveSimulator {
 
     // Spawn agents without a table ID (they will auto-join)
     for (let i = 0; i < this.options.agentCount; i++) {
-      const agentType = this.options.agentTypes[i % this.options.agentTypes.length]!;
-      await this.spawnAgent(null, agentType, i);
+      const slot = this.options.agentSlots[i % this.options.agentSlots.length]!;
+      await this.spawnAgent(null, slot, i);
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
@@ -148,9 +201,9 @@ export class LiveSimulator {
     const agentPromises: Promise<void>[] = [];
 
     for (let i = 0; i < this.options.agentCount; i++) {
-      const agentType = this.options.agentTypes[i % this.options.agentTypes.length]!;
+      const slot = this.options.agentSlots[i % this.options.agentSlots.length]!;
 
-      const promise = this.spawnAgent(tableId, agentType, i);
+      const promise = this.spawnAgent(tableId, slot, i);
       agentPromises.push(promise);
 
       // Small delay between spawns to avoid race conditions
@@ -251,42 +304,79 @@ export class LiveSimulator {
   /**
    * Spawn an agent process
    */
-  private async spawnAgent(tableId: string | null, agentType: string, index: number): Promise<void> {
+  private async spawnAgent(tableId: string | null, slot: AgentSlot, index: number): Promise<void> {
+    const agentType = slot.type.toLowerCase();
+    const resolvedModel = slot.model ?? this.options.llmModel;
+    const resolvedSkillDoc = this.options.skillDocPath;
+    const resolvedSkillUrl = this.options.skillUrl;
+
+    const agentBin =
+      this.options.agentBinPath ??
+      path.join(findRepoRoot(__dirname), 'packages', 'agents', 'dist', 'cli.js');
+
     const args = [
-      'packages/agents/dist/runner.js',
-      '--type', agentType,
-      '--server', this.options.serverUrl,
-      '--name', `${agentType}-${index}`,
+      agentBin,
+      '--type',
+      agentType,
+      '--server',
+      this.options.serverUrl,
+      '--name',
+      `${agentType}-${index}`,
     ];
 
-    // Only pass --table-id if explicitly provided (otherwise agent uses auto-join)
     if (tableId) {
       args.push('--table-id', tableId);
     }
 
-    // LLM agents need --model and --skill-doc
     if (agentType === 'llm') {
-      if (!this.options.llmModel)
-        throw new Error('llmModel is required in LiveSimulatorOptions when using LLM agents');
-      if (!this.options.skillDocPath)
-        throw new Error('skillDocPath is required in LiveSimulatorOptions when using LLM agents');
-      args.push('--model', this.options.llmModel);
-      args.push('--skill-doc', this.options.skillDocPath);
+      if (!resolvedModel)
+        throw new Error(
+          'Model required for LLM agent: use --model (shared) or type:provider:model (e.g. llm:openai:gpt-4.1)',
+        );
+      if (!resolvedSkillDoc)
+        throw new Error('skillDocPath is required for LLM agents (--skill-doc)');
+      args.push('--model', resolvedModel);
+      args.push('--skill-doc', resolvedSkillDoc);
+      if (this.options.logDir) {
+        args.push('--llm-log-path', path.join(this.options.logDir, `agent-${index}-${agentType}.jsonl`));
+      }
     }
 
-    // Autonomous agents need --model and --skill-url (they discover the table from the API)
     if (agentType === 'autonomous') {
-      if (!this.options.llmModel)
-        throw new Error('llmModel is required in LiveSimulatorOptions when using autonomous agents');
-      if (!this.options.skillUrl)
-        throw new Error('skillUrl is required in LiveSimulatorOptions when using autonomous agents');
-      args.push('--model', this.options.llmModel);
-      args.push('--skill-url', this.options.skillUrl);
+      if (!resolvedModel)
+        throw new Error(
+          'Model required for autonomous agent: use --model or type:provider:model',
+        );
+      if (!resolvedSkillUrl)
+        throw new Error('skillUrl is required for autonomous agents (--skill-url)');
+      args.push('--model', resolvedModel);
+      args.push('--skill-url', resolvedSkillUrl);
+      if (this.options.logDir) {
+        args.push('--llm-log-path', path.join(this.options.logDir, `agent-${index}-${agentType}.jsonl`));
+      }
+    }
+
+    if (agentType === 'protocol' || agentType === 'skill-runner') {
+      if (!resolvedModel)
+        throw new Error(
+          'Model required for protocol agent: use --model or type:provider:model',
+        );
+      if (!resolvedSkillUrl)
+        throw new Error('skillUrl is required for protocol agents (--skill-url)');
+      args.push('--model', resolvedModel);
+      args.push('--skill-url', resolvedSkillUrl);
+      if (this.options.logDir) {
+        args.push('--llm-log-path', path.join(this.options.logDir, `agent-${index}-${agentType}.jsonl`));
+      }
     }
 
     const proc = spawn('node', args, {
       stdio: this.options.verbose ? 'inherit' : 'ignore',
       cwd: process.cwd(),
+      env: {
+        ...process.env,
+        NODE_OPTIONS: sanitizeNodeOptionsForChild(process.env.NODE_OPTIONS),
+      },
     });
 
     this.processes.push(proc);

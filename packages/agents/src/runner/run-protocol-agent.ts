@@ -13,6 +13,7 @@ export async function runProtocolAgent(options: {
   model?: string
   skillUrl?: string
   llmLog?: boolean
+  llmLogPath?: string
 }): Promise<void> {
   if (!options.model)
     throw new Error('--model is required for protocol agent (e.g. openai:gpt-4.1)')
@@ -20,9 +21,10 @@ export async function runProtocolAgent(options: {
 
   const model = await resolveModel(options.model)
 
-  const logPath = options.llmLog
-    ? join(process.cwd(), 'logs', `protocol-${Date.now()}.jsonl`)
-    : undefined
+  const logPath = options.llmLogPath
+    ?? (options.llmLog
+      ? join(process.cwd(), 'logs', `protocol-${Date.now()}.jsonl`)
+      : undefined)
 
   const displayName = options.name ?? `ProtocolAgent-${options.model.split(':').pop()}`
   const display = new PokerWsDisplay(displayName)

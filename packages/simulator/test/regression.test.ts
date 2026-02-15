@@ -8,6 +8,7 @@ import {
   ReplaySimulator,
   exportEvents,
   SimulationHarness,
+  parseAgentSlots,
 } from '../src/index.js'
 import type {
   LiveSimulatorOptions,
@@ -91,6 +92,31 @@ function buildMinimalEventSequence() {
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
+describe('parseAgentSlots', () => {
+  it('should parse plain types', () => {
+    expect(parseAgentSlots('random,tight,callstation')).toEqual([
+      { type: 'random' },
+      { type: 'tight' },
+      { type: 'callstation' },
+    ])
+  })
+
+  it('should parse compact syntax with inline model', () => {
+    expect(parseAgentSlots('llm:openai:gpt-4.1,llm:anthropic:claude-sonnet-4-5')).toEqual([
+      { type: 'llm', model: 'openai:gpt-4.1' },
+      { type: 'llm', model: 'anthropic:claude-sonnet-4-5' },
+    ])
+  })
+
+  it('should parse mixed slots', () => {
+    expect(parseAgentSlots('llm,protocol:anthropic:claude,random')).toEqual([
+      { type: 'llm' },
+      { type: 'protocol', model: 'anthropic:claude' },
+      { type: 'random' },
+    ])
+  })
+})
+
 describe('Module exports regression', () => {
   it('should export LiveSimulator class', () => {
     expect(LiveSimulator).toBeDefined()
@@ -117,7 +143,7 @@ describe('Module exports regression', () => {
     const opts: LiveSimulatorOptions = {
       serverUrl: 'http://localhost:3000',
       agentCount: 2,
-      agentTypes: ['random'],
+      agentSlots: [{ type: 'random' }],
       handsToPlay: 1,
     }
     expect(opts.serverUrl).toBe('http://localhost:3000')
@@ -172,7 +198,7 @@ describe('LiveSimulator construction', () => {
     const simulator = new LiveSimulator({
       serverUrl: 'http://localhost:3000',
       agentCount: 4,
-      agentTypes: ['random', 'tight'],
+      agentSlots: [{ type: 'random' }, { type: 'tight' }],
       handsToPlay: 10,
     })
     expect(simulator).toBeInstanceOf(LiveSimulator)
@@ -182,7 +208,7 @@ describe('LiveSimulator construction', () => {
     const simulator = new LiveSimulator({
       serverUrl: 'http://localhost:3000',
       agentCount: 2,
-      agentTypes: ['random'],
+      agentSlots: [{ type: 'random' }],
       handsToPlay: 5,
       tableConfig: {
         blinds: { small: 5, big: 10 },
@@ -197,7 +223,7 @@ describe('LiveSimulator construction', () => {
     const simulator = new LiveSimulator({
       serverUrl: 'http://localhost:3000',
       agentCount: 2,
-      agentTypes: ['random'],
+      agentSlots: [{ type: 'random' }],
       handsToPlay: 1,
     })
     expect(() => simulator.stop()).not.toThrow()

@@ -57,6 +57,7 @@ export async function runSdkAgent(options: {
   model?: string
   skillDoc?: string
   llmLog?: boolean
+  llmLogPath?: string
 }): Promise<void> {
   const agent = await createAgent(options.type, {
     model: options.model,
@@ -96,8 +97,8 @@ export async function runSdkAgent(options: {
   console.log(`Joined table ${resolvedTableId} as seat ${joinResponse.seat_id}`)
 
   // Enable LLM logging if requested
-  if (options.llmLog && agent instanceof LlmAgent) {
-    const logPath = join(process.cwd(), 'logs', `llm-${resolvedTableId}.jsonl`)
+  if ((options.llmLog || options.llmLogPath) && agent instanceof LlmAgent) {
+    const logPath = options.llmLogPath ?? join(process.cwd(), 'logs', `llm-${resolvedTableId}.jsonl`)
     agent.enableLogging(logPath)
     console.log(`LLM logging enabled: ${logPath}`)
   }

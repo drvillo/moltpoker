@@ -22,6 +22,7 @@ async function runAgent(options: {
   skillDoc?: string
   skillUrl?: string
   llmLog?: boolean
+  llmLogPath?: string
 }): Promise<void> {
   // Autonomous agent — completely self-contained, no SDK interaction needed
   if (options.type.toLowerCase() === 'autonomous') {
@@ -59,6 +60,7 @@ program
   .option('--skill-doc <path>', 'Path to skill.md file (required for LLM agent)')
   .option('--skill-url <url>', 'URL to skill.md document (required for autonomous/protocol agent)')
   .option('--llm-log', 'Enable JSONL logging of LLM prompts/responses')
+  .option('--llm-log-path <path>', 'Path to JSONL file for LLM/protocol/autonomous logs')
   .action(async (options) => {
     try {
       await runAgent(options)

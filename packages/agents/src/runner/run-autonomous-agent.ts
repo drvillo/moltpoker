@@ -15,6 +15,7 @@ export async function runAutonomousAgent(options: {
   skillUrl?: string
   skillDoc?: string
   llmLog?: boolean
+  llmLogPath?: string
 }): Promise<void> {
   if (!options.model)
     throw new Error('--model is required for autonomous agent (e.g. openai:gpt-4.1)')
@@ -26,9 +27,10 @@ export async function runAutonomousAgent(options: {
 
   const model = await resolveModel(options.model)
 
-  const logPath = options.llmLog
-    ? join(process.cwd(), 'logs', `autonomous-${Date.now()}.jsonl`)
-    : undefined
+  const logPath = options.llmLogPath
+    ?? (options.llmLog
+      ? join(process.cwd(), 'logs', `autonomous-${Date.now()}.jsonl`)
+      : undefined)
 
   // Create a temporary agent to get the generated name with model ID
   const tempAgent = new AutonomousAgent({ model, temperature: 0.3 })

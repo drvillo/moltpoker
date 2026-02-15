@@ -6,8 +6,9 @@ import { fileURLToPath } from 'url';
 
 import { program } from 'commander';
 import dotenv from 'dotenv';
+import { createJsonlLogger } from '@moltpoker/agents';
 
-import { LiveSimulator } from './live.js';
+import { LiveSimulator, parseAgentSlots } from './live.js';
 import { ReplaySimulator } from './replay.js';
 
 function findRepoRoot(startDir: string): string {
@@ -41,7 +42,11 @@ program
   .command('live')
   .description('Run a live simulation with multiple agents')
   .option('-a, --agents <count>', 'Number of agents', '4')
-  .option('-t, --types <types>', 'Agent types (comma-separated): random, tight, callstation, llm, autonomous', 'random,tight,callstation')
+  .option(
+    '-t, --types <types>',
+    'Agent slots: "type" or "type:provider:model" (e.g. llm, llm:anthropic:claude-sonnet-4-5, protocol, random). Types: random, tight, callstation, llm, autonomous, protocol.',
+    'random,tight,callstation',
+  )
   .option('-n, --hands <count>', 'Number of hands to play', '10')
   .option('-s, --server <url>', 'Server URL', defaultServerUrl)
   .option('--blinds <blinds>', 'Blinds (small/big)', '1/2')
@@ -49,33 +54,65 @@ program
   .option('--timeout <ms>', 'Action timeout in ms', '5000')
   .option('--model <provider:model>', 'LLM model for llm/autonomous agents (e.g. openai:gpt-4.1)')
   .option('--skill-doc <path>', 'Path to skill.md for LLM agents', 'public/skill.md')
-  .option('--skill-url <url>', 'URL to skill.md for autonomous agents (e.g. http://localhost:3000/skill.md)')
+  .option(
+    '--skill-url <url>',
+    'URL to skill.md for autonomous/protocol agents (default: {server}/skill.md)',
+  )
+  .option('--log <dir>', 'Directory for per-agent logs and simulation summary JSONL')
   .option('-v, --verbose', 'Verbose output')
   .action(async (options) => {
     try {
       const blinds = options.blinds.split('/').map(Number);
-      const agentTypes = options.types.split(',').map((t: string) => t.trim());
+      const agentSlots = parseAgentSlots(options.types);
+      const skillUrl =
+        options.skillUrl ?? `${options.server.replace(/\/$/, '')}/skill.md`;
+      const agentCount = parseInt(options.agents, 10);
 
-      // Validate LLM/autonomous requirements
-      if (agentTypes.includes('llm') && !options.model) {
-        console.error('Error: --model is required when using LLM agents (e.g. --model openai:gpt-4.1)');
-        process.exit(1);
-      }
-      if (agentTypes.includes('autonomous')) {
-        if (!options.model) {
-          console.error('Error: --model is required when using autonomous agents (e.g. --model openai:gpt-4.1)');
+      // Validate: each LLM-type agent needs model (slot.model or --model) and appropriate skill source
+      const llmTypes = ['llm', 'autonomous', 'protocol', 'skill-runner'];
+      for (let i = 0; i < agentCount; i++) {
+        const slot = agentSlots[i % agentSlots.length]!;
+        const type = slot.type.toLowerCase();
+        if (!llmTypes.includes(type)) continue;
+
+        const hasModel = slot.model ?? options.model;
+        if (!hasModel) {
+          console.error(
+            `Error: Agent ${i} (${type}) needs a model. Use --model or compact syntax (e.g. ${type}:openai:gpt-4.1)`,
+          );
           process.exit(1);
         }
-        if (!options.skillUrl) {
-          console.error('Error: --skill-url is required when using autonomous agents (e.g. --skill-url http://localhost:3000/skill.md)');
+        if (type === 'llm' && !options.skillDoc) {
+          console.error('Error: --skill-doc is required when using LLM agents');
           process.exit(1);
         }
       }
 
+      const summaryLogPath = options.log
+        ? path.join(options.log, 'simulation-summary.jsonl')
+        : undefined;
+      const summaryLog = createJsonlLogger(summaryLogPath);
+      const startedAt = Date.now();
+      summaryLog({
+        event: 'simulation_start',
+        startedAt,
+        serverUrl: options.server,
+        skillUrl,
+        agentCount,
+        handsToPlay: parseInt(options.hands, 10),
+        tableConfig: {
+          blinds: { small: blinds[0]!, big: blinds[1]! },
+          initialStack: parseInt(options.stack, 10),
+          actionTimeoutMs: parseInt(options.timeout, 10),
+        },
+        agentSlots,
+      });
+
+      const agentBinPath = path.join(repoRoot, 'packages', 'agents', 'dist', 'cli.js');
       const simulator = new LiveSimulator({
         serverUrl: options.server,
-        agentCount: parseInt(options.agents, 10),
-        agentTypes,
+        agentCount,
+        agentSlots,
         handsToPlay: parseInt(options.hands, 10),
         tableConfig: {
           blinds: { small: blinds[0]!, big: blinds[1]! },
@@ -86,17 +123,28 @@ program
         serviceRoleKey,
         llmModel: options.model,
         skillDocPath: options.skillDoc,
-        skillUrl: options.skillUrl,
+        skillUrl,
+        agentBinPath,
+        logDir: options.log,
       });
 
       console.log('Starting live simulation...');
       console.log(`Agents: ${options.agents} (${options.types})`);
-      if (options.model) console.log(`LLM model: ${options.model}`);
-      if (options.skillUrl) console.log(`Skill URL (autonomous): ${options.skillUrl}`);
+      if (options.model) console.log(`Default LLM model: ${options.model}`);
+      if (skillUrl) console.log(`Skill URL: ${skillUrl}`);
       console.log(`Hands: ${options.hands}`);
       console.log(`Server: ${options.server}`);
 
       const result = await simulator.run();
+      summaryLog({
+        event: 'simulation_finish',
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        handsPlayed: result.handsPlayed,
+        errors: result.errors,
+        errorCount: result.errors.length,
+        agentResults: result.agentResults,
+      });
 
       console.log('\n=== Simulation Complete ===');
       console.log(`Hands played: ${result.handsPlayed}`);
@@ -109,6 +157,14 @@ program
         }
       }
     } catch (err) {
+      if (options?.log) {
+        const failureLog = createJsonlLogger(path.join(options.log, 'simulation-summary.jsonl'));
+        failureLog({
+          event: 'simulation_failed',
+          finishedAt: Date.now(),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       console.error('Simulation failed:', err);
       process.exit(1);
     }
@@ -167,4 +223,7 @@ program
     }
   });
 
-program.parse();
+// pnpm exec inserts "--" before forwarded args; strip it so Commander parses correctly
+const argv = process.argv.slice(2);
+if (argv[0] === '--') argv.shift();
+program.parse([process.argv[0]!, process.argv[1]!, ...argv]);

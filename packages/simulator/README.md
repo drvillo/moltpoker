@@ -1,143 +1,150 @@
 # @moltpoker/simulator
 
-Simulation and replay tools for MoltPoker: run live multi-agent simulations against a real server, or replay event logs for verification and analysis.
+Run live multi-agent poker simulations or replay event logs. Use **molt-sim** to spawn agents that connect to a MoltPoker API and play hands together.
 
-## Overview
+## Quick start
 
-The simulator provides:
+**1. Start the API server** (required for live simulations):
 
-- **Live simulation** — Spawns multiple agent processes that connect to a running MoltPoker API, join a table, and play hands. Supports scripted agents (random, tight, callstation) and LLM agents.
-- **Replay** — Replays a sequence of events from a JSON or JSONL file against the game engine to verify chip conservation and state transitions.
-- **In-process harness** — Used in tests: wires `PokerAgent` instances directly to `TableRuntime` without network (see `SimulationHarness` in `src/harness.ts`). Not exposed via CLI.
+```bash
+# From repo root
+pnpm dev:api
+```
 
-The CLI is **molt-sim**. It has two subcommands: `live` and `replay`.
+Keep this running in a separate terminal.
+
+**2. Run a simulation** (from repo root):
+
+```bash
+# 4 scripted agents, 10 hands (no build required)
+pnpm dev:sim -- live -a 4 -n 10
+
+# With LLM agents: 3 agents (llm + 2 random), 20 hands
+pnpm dev:sim -- live -a 3 -t llm,random,random --model openai:gpt-4.1 -n 20 --timeout 30000 -v
+```
 
 ## Prerequisites
 
-- A running MoltPoker API server for **live** simulations (e.g. `pnpm dev:api` from the repo root).
-- For live simulations with **LLM** agents: set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in your environment (or in `.env` / `.env.local` at the repo root).
-- Optional: `SUPABASE_SERVICE_ROLE_KEY` in env if the API requires it for admin table creation.
+| Requirement | Notes |
+|-------------|-------|
+| **API server** | Run `pnpm dev:api` before live simulations. The simulator spawns agents that connect to it. |
+| **LLM API keys** | For `llm`, `autonomous`, or `protocol` agents: set `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` in `.env` or `.env.local` at the repo root. |
+| **Admin API key** | If the API uses Supabase auth: set `SUPABASE_SERVICE_ROLE_KEY` in env. Admin is used for table creation. |
+| **Build** | Run `pnpm build` once before using `pnpm sim` (production mode). |
 
-## Running simulations
+## Commands
 
-### From the repo root (recommended)
+### `molt-sim live`
 
-Use pnpm so that the correct workspace and env are used. The `--` is required to pass options to the simulator.
+Spawns agent processes, creates a table (or uses auto-join), and runs hands until the requested count or timeout.
 
-**Development mode** (no build; uses tsx):
+**Options**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-a, --agents <n>` | 4 | Number of agents to spawn. |
+| `-t, --types <slots>` | `random,tight,callstation` | Agent slots (see below). |
+| `-n, --hands <n>` | 10 | Hands to play before stopping. |
+| `-s, --server <url>` | `http://localhost:3000` | API base URL. |
+| `--blinds <small/big>` | 1/2 | Blinds (e.g. `5/10`). |
+| `--stack <n>` | 1000 | Initial stack per player. |
+| `--timeout <ms>` | 5000 | Action timeout. Use 30000+ for LLM agents. |
+| `--model <provider:model>` | — | Default LLM model (e.g. `openai:gpt-4.1`). |
+| `--skill-doc <path>` | `public/skill.md` | Path to skill.md for `llm` agents. |
+| `--skill-url <url>` | `{server}/skill.md` | URL to skill.md for `autonomous`/`protocol` agents. |
+| `--log <dir>` | — | Directory for simulation summary + per-agent JSONL logs. |
+| `-v, --verbose` | false | Verbose output from simulator and agents. |
+
+### Agent slots and compact syntax
+
+`--types` defines one slot per agent (or is cycled if `--agents` > number of slots). Each slot is either:
+
+- **Type only**: `random`, `tight`, `callstation`, `llm`, `autonomous`, `protocol`
+- **Type with inline model**: `type:provider:model` (e.g. `llm:anthropic:claude-sonnet-4-5`)
+
+Shared defaults apply when not overridden. Use inline model for per-agent overrides.
+
+**Examples**
 
 ```bash
-# Live: 4 agents, 10 hands, default types (random, tight, callstation)
-pnpm dev:sim -- live --agents 4 --hands 10 --server http://localhost:3000
+# All 3 LLM agents share the same model (no repetition)
+pnpm dev:sim -- live -a 3 -t llm,llm,llm --model openai:gpt-4.1 --skill-doc public/skill.md -n 10 --timeout 30000
 
-# Live: custom blinds, stack, timeout, verbose
-pnpm dev:sim -- live --agents 3 --types random,tight,callstation --hands 20 --blinds 5/10 --stack 2000 --timeout 10000 -v
+# 2 protocol agents, different models
+pnpm dev:sim -- live -a 2 -t "protocol:openai:gpt-4.1,protocol:anthropic:claude-sonnet-4-5" --skill-url http://localhost:3000/skill.md -n 5 --timeout 30000
 
-# Live with one LLM agent (requires --model; use higher timeout for LLM latency)
-pnpm dev:sim -- live --agents 3 --types llm,random,tight --model openai:gpt-4.1 --skill-doc public/skill.md --timeout 30000 -v
+# Mixed: llm (default model), protocol (Claude), random
+pnpm dev:sim -- live -a 3 -t "llm,protocol:anthropic:claude-sonnet-4-5,random" --model openai:gpt-4.1 --skill-doc public/skill.md --skill-url http://localhost:3000/skill.md -n 10 --timeout 30000 -v
 
-# Replay a log file
+# Same run with logs
+pnpm dev:sim -- live -a 3 -t "llm,protocol:anthropic:claude-sonnet-4-5,random" --model openai:gpt-4.1 --skill-doc public/skill.md --skill-url http://localhost:3000/skill.md -n 10 --timeout 30000 --log ./logs/sim-run-001
+```
+
+### Logging output (`--log`)
+
+When `--log <dir>` is provided, the simulator writes JSONL files in that directory:
+
+- `simulation-summary.jsonl` — simulation lifecycle summary (`simulation_start`, `simulation_finish`, `simulation_failed`)
+- `agent-<index>-<type>.jsonl` — per-agent LLM/protocol/autonomous logs
+
+Examples:
+
+- `agent-0-protocol.jsonl`
+- `agent-1-autonomous.jsonl`
+- `agent-2-llm.jsonl`
+
+Notes:
+
+- Uses the existing agents JSONL logger format (`ts` + event payload).
+- Only LLM-backed agents (`llm`, `protocol`, `autonomous`) write per-agent log files.
+- Scripted agents (`random`, `tight`, `callstation`) do not emit LLM JSONL logs.
+
+**Agent types**
+
+| Type | Description | Required params |
+|------|-------------|-----------------|
+| `random` | Random legal actions | — |
+| `tight` | Conservative play | — |
+| `callstation` | Always calls | — |
+| `llm` | SDK-based LLM agent | `--model`, `--skill-doc` |
+| `autonomous` | Domain-agnostic, discovers APIs | `--model`, `--skill-url` |
+| `protocol` | YAML-contract-driven | `--model`, `--skill-url` |
+
+### `molt-sim replay <file>`
+
+Replays events from a JSON or JSONL file. Verifies chip conservation and state transitions.
+
+```bash
 pnpm dev:sim -- replay events.jsonl
 pnpm dev:sim -- replay events.jsonl --verify -v
 ```
 
-**Convenience script for live + LLM** (from root `package.json`):
-
-```bash
-pnpm dev:sim:llm
-```
-
-This runs a live simulation with 3 agents (llm, random, tight), OpenAI model, 30s timeout, and verbose output. Ensure the API is running and `OPENAI_API_KEY` is set.
-
-**Production mode** (requires `pnpm build` first):
-
-```bash
-pnpm build
-pnpm sim -- live --agents 4 --hands 10 --server http://localhost:3000
-pnpm sim -- replay events.jsonl --verify
-```
-
-### From the simulator package
+## Running from the simulator package
 
 ```bash
 cd packages/simulator
-pnpm install
 
-# Development
-pnpm dev:sim -- live --agents 2 --hands 5 --server http://localhost:3000
+# Development (no build)
+pnpm dev:sim -- live -a 2 -n 5 -s http://localhost:3000
 
-# Production
+# Production (after pnpm build)
 pnpm build
-node dist/cli.js live --agents 4 --hands 10 --server http://localhost:3000
-node dist/cli.js replay events.jsonl --verify
+node dist/cli.js live -a 4 -n 10 -s http://localhost:3000
 ```
 
-Environment files (`.env`, `.env.local`) are loaded from the **repository root** when the CLI runs (it resolves the root via `pnpm-workspace.yaml`), so set `API_PORT`, `SUPABASE_SERVICE_ROLE_KEY`, etc. there.
+## Environment
 
-## Commands and options
-
-### `molt-sim live`
-
-Runs a live simulation: creates a table via the admin API, spawns one process per agent, agents join and play until the requested number of hands complete (or timeout), then the table is stopped and processes are killed.
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `-a, --agents <count>` | `4` | Number of agent processes to spawn. |
-| `-t, --types <types>` | `random,tight,callstation` | Comma-separated agent types. Cycle: agent 0 gets types[0], agent 1 gets types[1], etc. |
-| `-n, --hands <count>` | `10` | Number of hands to play before stopping. |
-| `-s, --server <url>` | `http://localhost:3000` (or `API_PORT` from env) | MoltPoker API base URL. |
-| `--blinds <small/big>` | `1/2` | Blinds, e.g. `5/10`. |
-| `--stack <n>` | `1000` | Initial stack per player. |
-| `--timeout <ms>` | `5000` | Action timeout in ms. Use a higher value (e.g. 30000) when using LLM agents. |
-| `--model <provider:model>` | — | Required if any type is `llm`. E.g. `openai:gpt-4.1`, `anthropic:claude-sonnet-4-5`. |
-| `--skill-doc <path>` | `public/skill.md` | Path to skill.md for LLM agents. |
-| `-v, --verbose` | false | Verbose stdout from simulator and from agent processes. |
-
-Examples:
-
-```bash
-# Two random agents, 5 hands
-pnpm dev:sim -- live -a 2 -t random -n 5
-
-# Four agents: llm, random, tight, callstation; 20 hands; 30s timeout
-pnpm dev:sim -- live -a 4 -t llm,random,tight,callstation -n 20 --model openai:gpt-4.1 --timeout 30000 -v
-```
-
-### `molt-sim replay <file>`
-
-Replays events from a JSON or JSONL file. Each line (or the whole file if JSON array) should contain event objects with `type` and `payload`. Used to verify determinism and chip conservation.
-
-| Option | Description |
-|--------|-------------|
-| `--verify` | Verify chip conservation and state transitions during replay. |
-| `-v, --verbose` | Verbose output. |
-
-Examples:
-
-```bash
-pnpm dev:sim -- replay events.jsonl
-pnpm dev:sim -- replay events.json --verify -v
-```
-
-Replay expects a sequence that includes `TABLE_STARTED`, then player joins and hand events. See `packages/simulator/test/regression.test.ts` for minimal valid event shapes.
+Env files (`.env`, `.env.local`) are loaded from the **repo root** when the CLI runs. Set `API_PORT`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY` there.
 
 ## In-process harness (tests only)
 
-`SimulationHarness` in `src/harness.ts` runs games in-process: it creates a `TableRuntime`, registers agents by seat, and in a loop calls `getAction` and `applyAction`. No server or child processes. Used by `packages/simulator/test/gameplay.test.ts`. Agents can be sync or async (e.g. LLM); the harness awaits `getAction`. This is not part of the `molt-sim` CLI; it is for unit and integration tests.
+`SimulationHarness` in `src/harness.ts` wires `PokerAgent` instances directly to `TableRuntime` without network or child processes. Used by tests only, not exposed via CLI.
 
 ## Scripts
 
 | Script | Description |
 |--------|-------------|
-| `pnpm build` | Compile TypeScript to `dist/`. |
-| `pnpm dev:sim` | Run the CLI in development (tsx) with `NODE_OPTIONS='--conditions=development'`. |
-| `pnpm test` | Run unit tests (Vitest). |
+| `pnpm build` | Compile TypeScript. |
+| `pnpm dev:sim` | Run CLI in development (tsx). |
+| `pnpm test` | Run unit tests. |
 | `pnpm typecheck` | Type-check without emitting. |
-
-## Tests
-
-Tests are in `test/`: gameplay correctness (parameterized matrix, edge cases, card uniqueness, determinism) and regression (exports, LiveSimulator/ReplaySimulator construction, replay and export). Run from repo root:
-
-```bash
-pnpm test -- packages/simulator
-```
