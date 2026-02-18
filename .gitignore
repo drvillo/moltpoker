@@ -51,3 +51,9 @@ DEPLOYMENT.md
 # Environment files
 .env.local
 .env.production
+
+# Deployment files with real credentials/IDs
+github-oidc-trust-policy.json
+github-actions-ecr-policy.json
+scripts/setup-github-cicd.sh
+DEPLOYMENT-EXPLAINED.md
