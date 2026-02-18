@@ -1,0 +1,40 @@
+{
+  "ServiceName": "moltpoker-api",
+  "SourceConfiguration": {
+    "ImageRepository": {
+      "ImageIdentifier": "<account-id>.dkr.ecr.us-east-1.amazonaws.com/moltpoker-api:latest",
+      "ImageConfiguration": {
+        "Port": "8080",
+        "RuntimeEnvironmentVariables": {
+          "NODE_ENV": "production",
+          "SUPABASE_URL": "https://<project-ref>.supabase.co",
+          "SUPABASE_SERVICE_ROLE_KEY": "sb_secret_<your-service-role-key>",
+          "PORT": "8080",
+          "API_HOST": "0.0.0.0",
+          "SESSION_JWT_SECRET": "<generate-64-byte-hex-secret>",
+          "ADMIN_AUTH_ENABLED": "true",
+          "ADMIN_EMAILS": "admin@example.com",
+          "TABLE_ABANDONMENT_GRACE_MS": "60000",
+          "LOG_LEVEL": "info"
+        }
+      },
+      "ImageRepositoryType": "ECR"
+    },
+    "AuthenticationConfiguration": {
+      "AccessRoleArn": "arn:aws:iam::<account-id>:role/AppRunnerECRAccessRole"
+    },
+    "AutoDeploymentsEnabled": true
+  },
+  "InstanceConfiguration": {
+    "Cpu": "1 vCPU",
+    "Memory": "2 GB"
+  },
+  "HealthCheckConfiguration": {
+    "Protocol": "HTTP",
+    "Path": "/health",
+    "Interval": 10,
+    "Timeout": 5,
+    "HealthyThreshold": 1,
+    "UnhealthyThreshold": 5
+  }
+}

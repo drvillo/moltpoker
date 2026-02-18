@@ -41,3 +41,19 @@ temp/
 
 #MD and docs
 **/local-only/**
+# Deployment artifacts with secrets
+apprunner-config.json
+apprunner-web-config.json
+amplify-env-vars.json
+update-web-env.json
+DEPLOYMENT.md
+
+# Environment files
+.env.local
+.env.production
+
+# Deployment files with real credentials/IDs
+github-oidc-trust-policy.json
+github-actions-ecr-policy.json
+scripts/setup-github-cicd.sh
+DEPLOYMENT-EXPLAINED.md

@@ -1,17 +1,16 @@
 # ─────────────────────────────────────────────────────────────
-# CI/CD — Build API Docker image and push to Amazon ECR.
+# CI/CD — Build Web App Docker image and push to Amazon ECR.
 # App Runner auto-deploys when a new image appears in ECR.
 # ─────────────────────────────────────────────────────────────
-name: Deploy API
+name: Deploy Web App
 
 on:
   push:
     branches: [main]
     paths:
-      - "apps/api/**"
+      - "apps/web/**"
       - "packages/shared/**"
-      - "packages/poker/**"
-      - "apps/api/Dockerfile"
+      - "apps/web/Dockerfile"
       - "pnpm-lock.yaml"
 
   # Allow manual trigger from the Actions tab
@@ -19,21 +18,25 @@ on:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-  ECR_REPOSITORY: moltpoker-api
+  ECR_REPOSITORY: moltpoker-web
+  NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+  NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+  NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
 
 jobs:
   build-and-push:
     name: Build & Push to ECR
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # For OIDC auth (recommended)
+      id-token: write   # For OIDC auth
       contents: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
@@ -48,8 +51,13 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build \
-            -f apps/api/Dockerfile \
+          docker buildx build \
+            --platform linux/amd64 \
+            -f apps/web/Dockerfile \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=${{ env.NEXT_PUBLIC_SUPABASE_URL }} \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }} \
+            --build-arg NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }} \
+            --build-arg NEXT_PUBLIC_SITE_URL=${{ env.NEXT_PUBLIC_SITE_URL }} \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
             .
@@ -61,9 +69,11 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          echo "### 🚀 Image pushed to ECR" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Web App Image Pushed to ECR" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Registry:** \`$ECR_REGISTRY/$ECR_REPOSITORY\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Tag:** \`$IMAGE_TAG\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "App Runner will automatically deploy the new image." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Web App URL:** ${{ vars.NEXT_PUBLIC_SITE_URL }}" >> $GITHUB_STEP_SUMMARY
