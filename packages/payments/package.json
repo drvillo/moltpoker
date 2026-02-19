@@ -1,0 +1,31 @@
+{
+  "name": "@moltpoker/payments",
+  "version": "0.1.0",
+  "description": "Payment adapters for MoltPoker real money tables",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist node_modules",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@moltpoker/shared": "workspace:*",
+    "dotenv": "^17.3.1",
+    "viem": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.0"
+  }
+}

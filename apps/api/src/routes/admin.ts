@@ -8,6 +8,7 @@ import {
 } from '@moltpoker/shared';
 
 import * as db from '../db.js';
+import { config } from '../config.js';
 import { tableManager } from '../table/manager.js';
 import { startTableRuntime } from '../table/startTable.js';
 import { clearScheduledNextHand, scheduleActionTimeout } from '../table/timeoutHandler.js';
@@ -36,6 +37,16 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
     const { config: tableConfig, seed } = parseResult.data;
     const bucketKey = (request.body as Record<string, unknown>)?.bucket_key as string | undefined;
     const finalConfig = TableConfigSchema.parse(tableConfig || {});
+
+    // Validate real money table creation
+    if (finalConfig.realMoney && !config.realMoneyEnabled) {
+      return reply.status(400).send({
+        error: {
+          code: ErrorCodes.REAL_MONEY_DISABLED,
+          message: 'Real money tables are not enabled on this server',
+        },
+      });
+    }
 
     const tableId = generateTableId();
 

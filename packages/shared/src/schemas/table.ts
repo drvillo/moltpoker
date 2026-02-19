@@ -28,6 +28,7 @@ export const TableConfigSchema = z.object({
   actionTimeoutMs: z.number().int().positive().default(DEFAULT_ACTION_TIMEOUT_MS),
   minPlayersToStart: z.number().int().min(MIN_PLAYERS_TO_START).max(MAX_PLAYERS).default(MIN_PLAYERS_TO_START),
   seed: z.string().optional(),
+  realMoney: z.boolean().default(false),
 });
 
 /**
@@ -70,6 +71,7 @@ export const TableListItemSchema = z.object({
   playerCount: z.number().int().min(0),
   created_at: z.coerce.date(),
   bucket_key: z.string().optional(),
+  realMoney: z.boolean().optional(),
 });
 
 /**

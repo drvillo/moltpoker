@@ -21,6 +21,7 @@ export default function CreateTablePage() {
     seed: '',
   });
   const [bucketKey, setBucketKey] = useState('');
+  const [realMoney, setRealMoney] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -44,8 +45,12 @@ export default function CreateTablePage() {
 
     setLoading(true);
     try {
+      const tableConfig = {
+        ...(formData as TableConfig),
+        realMoney,
+      };
       const result = await adminApi.createTable({
-        config: formData as TableConfig,
+        config: tableConfig,
         seed: formData.seed || undefined,
         bucket_key: bucketKey || undefined,
       });
@@ -210,6 +215,25 @@ export default function CreateTablePage() {
               Tables in the same bucket share a lobby. Leave empty for &quot;default&quot;.
             </p>
           </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              id="realMoney"
+              type="checkbox"
+              checked={realMoney}
+              onChange={(e) => setRealMoney(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="realMoney" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Real Money Table
+            </label>
+          </div>
+          {realMoney && (
+            <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200">
+              <strong>Warning:</strong> Real money tables require players to deposit USDC before playing. Ensure the
+              payment system is properly configured.
+            </div>
+          )}
 
           {error && (
             <div className="rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-200">

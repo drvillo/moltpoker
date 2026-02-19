@@ -1,0 +1,11 @@
+# Foundry
+cache/
+out/
+broadcast/
+
+# IDE
+.vscode/
+.idea/
+
+# dotenv
+.env

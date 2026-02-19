@@ -62,6 +62,14 @@ export const config = {
     process.env.LOG_LEVEL ||
     (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
 
+  // Real Money / Payments
+  realMoneyEnabled: process.env.REAL_MONEY_ENABLED === 'true',
+  paymentAdapter: process.env.PAYMENT_ADAPTER || 'evm_vault',
+  
+  // Payment Runtime Configuration (adapter-agnostic)
+  depositTimeoutMs: parseInt(process.env.DEPOSIT_TIMEOUT_MS || '300000', 10), // 5 minutes
+  paymentEventSyncIntervalMs: parseInt(process.env.PAYMENT_EVENT_SYNC_INTERVAL_MS || '5000', 10),
+
   // Public URL (built from components)
   get publicBaseUrl(): string {
     return buildPublicBaseUrl();

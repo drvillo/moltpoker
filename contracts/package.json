@@ -1,0 +1,25 @@
+{
+  "name": "@moltpoker/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "anvil": "anvil",
+    "build": "forge build",
+    "test": "forge test -vvv",
+    "test:unit": "forge test --match-path 'test/**/*.t.sol' -vvv",
+    "lint": "solhint 'src/**/*.sol'",
+    "fmt": "forge fmt",
+    "fmt:check": "forge fmt --check",
+    "deploy:local": "bash script/deploy-local.sh",
+    "deploy:sepolia": "forge script script/Deploy.s.sol:DeployScript --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast --verify",
+    "deploy:base": "forge script script/Deploy.s.sol:DeployScript --rpc-url $BASE_RPC_URL --broadcast --verify",
+    "verify:sepolia": "forge verify-contract $EVM_VAULT_ADDRESS src/MoltPokerVault.sol:MoltPokerVault --chain base_sepolia --constructor-args $(cast abi-encode 'constructor(address,address)' $EVM_USDC_CONTRACT $EVM_VAULT_ADMIN) --watch",
+    "verify:base": "forge verify-contract $EVM_VAULT_ADDRESS src/MoltPokerVault.sol:MoltPokerVault --chain base --constructor-args $(cast abi-encode 'constructor(address,address)' $EVM_USDC_CONTRACT $EVM_VAULT_ADMIN) --watch",
+    "abi:generate": "node script/generate-abi.js",
+    "abi:check": "bash script/check-abi.sh"
+  },
+  "devDependencies": {
+    "solhint": "^4.0.0"
+  }
+}

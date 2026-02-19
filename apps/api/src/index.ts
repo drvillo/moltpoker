@@ -10,6 +10,9 @@ import { registerAutoJoinRoutes } from './routes/autoJoin.js';
 import { registerSkillRoutes } from './routes/skill.js';
 import { registerTableRoutes } from './routes/tables.js';
 import { registerWebSocketRoutes } from './ws/connectionHandler.js';
+import { initializePaymentAdapter } from './payments/paymentService.js';
+import { startEventListener, stopEventListener } from './payments/eventListener.js';
+import { validatePaymentConfig } from './config/validation.js';
 
 /**
  * Clean up stale "running" tables on startup.
@@ -76,6 +79,7 @@ async function main() {
   for (const signal of signals) {
     process.on(signal, async () => {
       app.log.info(`Received ${signal}, shutting down gracefully...`);
+      stopEventListener();
       await app.close();
       process.exit(0);
     });
@@ -85,6 +89,40 @@ async function main() {
   const cleanedCount = await cleanupStaleTables();
   if (cleanedCount > 0) {
     app.log.info(`Cleaned up ${cleanedCount} stale running table(s) from previous session`);
+  }
+
+  // Initialize payment adapter if real money is enabled
+  if (config.realMoneyEnabled) {
+    app.log.info('Real money mode enabled');
+    app.log.info(`Payment adapter: ${config.paymentAdapter}`);
+    
+    // Validate configuration
+    const validation = validatePaymentConfig();
+    
+    if (!validation.valid) {
+      app.log.error('Payment configuration validation failed:');
+      for (const error of validation.errors) {
+        app.log.error(`  - ${error}`);
+      }
+      app.log.error('Real money tables will not function. Please fix configuration and restart.');
+    } else {
+      // Log warnings
+      for (const warning of validation.warnings) {
+        app.log.warn(`  - ${warning}`);
+      }
+      
+      const adapter = initializePaymentAdapter();
+      if (adapter) {
+        app.log.info('Payment adapter initialized successfully');
+        
+        // Start event listener
+        startEventListener(app.log);
+      } else {
+        app.log.warn('Failed to initialize payment adapter - real money tables may not function correctly');
+      }
+    }
+  } else {
+    app.log.info('Real money mode disabled (free-to-play only)');
   }
 
   // Start server

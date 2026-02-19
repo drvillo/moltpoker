@@ -10,6 +10,10 @@ import {
   GameStatePayloadSchema,
   ActionKindSchema,
   TableStatusPayloadSchema,
+  DepositConfirmedPayloadSchema,
+  PayoutInitiatedPayloadSchema,
+  WelcomePayloadSchema,
+  WsMessageTypeSchema,
 } from '../src/schemas/index.js';
 import type { TableListItem } from '../src/types/index.js';
 
@@ -457,6 +461,199 @@ describe('Schemas', () => {
         // Missing required fields
       });
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('Payment WS schemas', () => {
+    describe('DepositConfirmedPayloadSchema', () => {
+      it('should validate payload with all fields', () => {
+        const payload = {
+          deposit_id: 'dep_123',
+          table_id: 'tbl_abc',
+          seat_id: 0,
+          agent_id: 'agt_xyz',
+          amount_usdc: 10.5,
+          tx_hash: '0xabcdef',
+          confirmed_at: '2024-01-01T00:00:00Z',
+        };
+
+        const result = DepositConfirmedPayloadSchema.safeParse(payload);
+        expect(result.success).toBe(true);
+      });
+
+      it('should fail when missing required field', () => {
+        const payload = {
+          deposit_id: 'dep_123',
+          // Missing table_id, amount_usdc, tx_hash, confirmed_at
+          seat_id: 0,
+          agent_id: 'agt_xyz',
+        };
+
+        const result = DepositConfirmedPayloadSchema.safeParse(payload);
+        expect(result.success).toBe(false);
+      });
+
+      it('should strip extra unknown fields', () => {
+        const payload = {
+          deposit_id: 'dep_123',
+          table_id: 'tbl_abc',
+          seat_id: 0,
+          agent_id: 'agt_xyz',
+          amount_usdc: 10.5,
+          tx_hash: '0xabcdef',
+          confirmed_at: '2024-01-01T00:00:00Z',
+          extra_field: 'should be stripped',
+        };
+
+        const result = DepositConfirmedPayloadSchema.safeParse(payload);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data).not.toHaveProperty('extra_field');
+        }
+      });
+    });
+
+    describe('PayoutInitiatedPayloadSchema', () => {
+      it('should validate payload with all fields including optional tx_hash', () => {
+        const payload = {
+          payout_id: 'pay_456',
+          table_id: 'tbl_abc',
+          seat_id: 1,
+          agent_id: 'agt_xyz',
+          amount_usdc: 15.0,
+          tx_hash: '0x123456',
+          status: 'pending_confirmation',
+        };
+
+        const result = PayoutInitiatedPayloadSchema.safeParse(payload);
+        expect(result.success).toBe(true);
+      });
+
+      it('should validate payload without optional tx_hash', () => {
+        const payload = {
+          payout_id: 'pay_456',
+          table_id: 'tbl_abc',
+          seat_id: 1,
+          agent_id: 'agt_xyz',
+          amount_usdc: 15.0,
+          status: 'pending',
+        };
+
+        const result = PayoutInitiatedPayloadSchema.safeParse(payload);
+        expect(result.success).toBe(true);
+      });
+
+      it('should fail when missing required field', () => {
+        const payload = {
+          payout_id: 'pay_456',
+          // Missing status
+        };
+
+        const result = PayoutInitiatedPayloadSchema.safeParse(payload);
+        expect(result.success).toBe(false);
+      });
+    });
+
+    describe('WelcomePayloadSchema - RM optional fields', () => {
+      it('should validate welcome without deposit_status and real_money (both optional)', () => {
+        const payload = {
+          protocol_version: '0.1',
+          min_supported_protocol_version: '0.1',
+          skill_doc_url: 'http://localhost/skill.md',
+          seat_id: 2,
+          agent_id: 'agt_test',
+          action_timeout_ms: 20000,
+        };
+
+        const result = WelcomePayloadSchema.safeParse(payload);
+        expect(result.success).toBe(true);
+      });
+
+      it('should validate welcome with deposit_status and real_money', () => {
+        const payload = {
+          protocol_version: '0.1',
+          min_supported_protocol_version: '0.1',
+          skill_doc_url: 'http://localhost/skill.md',
+          seat_id: 3,
+          agent_id: 'agt_abc',
+          action_timeout_ms: 30000,
+          deposit_status: 'pending',
+          real_money: true,
+        };
+
+        const result = WelcomePayloadSchema.safeParse(payload);
+        expect(result.success).toBe(true);
+      });
+
+      it('should fail when real_money has non-boolean value', () => {
+        const payload = {
+          protocol_version: '0.1',
+          min_supported_protocol_version: '0.1',
+          skill_doc_url: 'http://localhost/skill.md',
+          seat_id: 3,
+          agent_id: 'agt_abc',
+          action_timeout_ms: 30000,
+          real_money: 'yes', // Invalid: should be boolean
+        };
+
+        const result = WelcomePayloadSchema.safeParse(payload);
+        expect(result.success).toBe(false);
+      });
+    });
+
+    describe('TableStatusPayloadSchema - RM optional field', () => {
+      it('should validate waiting status with real_money: true', () => {
+        const payload = {
+          status: 'waiting',
+          seat_id: 0,
+          agent_id: 'agt_x',
+          min_players_to_start: 2,
+          current_players: 1,
+          real_money: true,
+        };
+
+        const result = TableStatusPayloadSchema.safeParse(payload);
+        expect(result.success).toBe(true);
+      });
+
+      it('should validate waiting status without real_money (optional)', () => {
+        const payload = {
+          status: 'waiting',
+          seat_id: 0,
+          agent_id: 'agt_x',
+          min_players_to_start: 2,
+          current_players: 1,
+        };
+
+        const result = TableStatusPayloadSchema.safeParse(payload);
+        expect(result.success).toBe(true);
+      });
+
+      it('should validate ended status (no real_money field in ended variant)', () => {
+        const payload = {
+          status: 'ended',
+        };
+
+        const result = TableStatusPayloadSchema.safeParse(payload);
+        expect(result.success).toBe(true);
+      });
+    });
+
+    describe('WsMessageTypeSchema - payment types', () => {
+      it('should accept deposit_confirmed as valid message type', () => {
+        const result = WsMessageTypeSchema.safeParse('deposit_confirmed');
+        expect(result.success).toBe(true);
+      });
+
+      it('should accept payout_initiated as valid message type', () => {
+        const result = WsMessageTypeSchema.safeParse('payout_initiated');
+        expect(result.success).toBe(true);
+      });
+
+      it('should reject invalid_type', () => {
+        const result = WsMessageTypeSchema.safeParse('invalid_type');
+        expect(result.success).toBe(false);
+      });
     });
   });
 });

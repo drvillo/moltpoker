@@ -408,3 +408,160 @@ describe('passthrough messages', () => {
     expect(result).not.toHaveProperty('ts')
   })
 })
+
+// ─── Payment Message Conversion ──────────────────────────────────────────────
+
+describe('deposit_confirmed conversion', () => {
+  it('passes through all fields with type tag', () => {
+    const payload = {
+      deposit_id: 'dep_123',
+      table_id: 'tbl_abc',
+      seat_id: 0,
+      agent_id: 'agt_xyz',
+      amount_usdc: 10.5,
+      tx_hash: '0xabcdef',
+      confirmed_at: '2024-01-01T00:00:00Z',
+    }
+    const result = formatMessage('deposit_confirmed', payload) as Record<string, unknown>
+
+    expect(result.type).toBe('deposit_confirmed')
+    expect(result.deposit_id).toBe('dep_123')
+    expect(result.table_id).toBe('tbl_abc')
+    expect(result.seat_id).toBe(0)
+    expect(result.agent_id).toBe('agt_xyz')
+    expect(result.amount_usdc).toBe(10.5)
+    expect(result.tx_hash).toBe('0xabcdef')
+    expect(result.confirmed_at).toBe('2024-01-01T00:00:00Z')
+  })
+
+  it('does not rename or strip fields', () => {
+    const payload = {
+      deposit_id: 'dep_123',
+      table_id: 'tbl_abc',
+      seat_id: 0,
+      agent_id: 'agt_xyz',
+      amount_usdc: 10.5,
+      tx_hash: '0xabcdef',
+      confirmed_at: '2024-01-01T00:00:00Z',
+    }
+    const result = formatMessage('deposit_confirmed', payload) as Record<string, unknown>
+
+    // All original keys should be present
+    expect(result).toHaveProperty('deposit_id')
+    expect(result).toHaveProperty('amount_usdc')
+    expect(result).toHaveProperty('tx_hash')
+  })
+})
+
+describe('payout_initiated conversion', () => {
+  it('passes through all fields with type tag', () => {
+    const payload = {
+      payout_id: 'pay_456',
+      table_id: 'tbl_abc',
+      seat_id: 1,
+      agent_id: 'agt_xyz',
+      amount_usdc: 15.0,
+      tx_hash: '0x123456',
+      status: 'pending_confirmation',
+    }
+    const result = formatMessage('payout_initiated', payload) as Record<string, unknown>
+
+    expect(result.type).toBe('payout_initiated')
+    expect(result.payout_id).toBe('pay_456')
+    expect(result.amount_usdc).toBe(15.0)
+    expect(result.tx_hash).toBe('0x123456')
+    expect(result.status).toBe('pending_confirmation')
+  })
+
+  it('passes through when tx_hash is undefined (optional field)', () => {
+    const payload = {
+      payout_id: 'pay_456',
+      table_id: 'tbl_abc',
+      seat_id: 1,
+      agent_id: 'agt_xyz',
+      amount_usdc: 15.0,
+      status: 'pending',
+    }
+    const result = formatMessage('payout_initiated', payload) as Record<string, unknown>
+
+    expect(result.type).toBe('payout_initiated')
+    expect(result.payout_id).toBe('pay_456')
+    // When tx_hash is not in the payload, it won't be in the result (JS spread behavior)
+    expect('tx_hash' in result).toBe(false)
+  })
+})
+
+describe('welcome conversion - RM fields', () => {
+  it('strips deposit_status and real_money fields (current behavior)', () => {
+    const payload = {
+      protocol_version: '0.1',
+      min_supported_protocol_version: '0.1',
+      skill_doc_url: 'http://localhost/skill.md',
+      seat_id: 3,
+      agent_id: 'agt_abc',
+      action_timeout_ms: 30000,
+      deposit_status: 'pending',
+      real_money: true,
+    }
+    const result = formatMessage('welcome', payload as any) as Record<string, unknown>
+
+    expect(result.type).toBe('welcome')
+    expect(result.seat).toBe(3)
+    expect(result.agent_id).toBe('agt_abc')
+    expect(result.timeout).toBe(30000)
+
+    // RM fields are NOT forwarded in compact format (current implementation)
+    expect(result).not.toHaveProperty('deposit_status')
+    expect(result).not.toHaveProperty('real_money')
+  })
+
+  it('welcome without RM fields works normally', () => {
+    const payload = {
+      protocol_version: '0.1',
+      min_supported_protocol_version: '0.1',
+      skill_doc_url: 'http://localhost/skill.md',
+      seat_id: 2,
+      agent_id: 'agt_test',
+      action_timeout_ms: 20000,
+    }
+    const result = formatMessage('welcome', payload) as Record<string, unknown>
+
+    expect(result).toEqual({
+      type: 'welcome',
+      seat: 2,
+      agent_id: 'agt_test',
+      timeout: 20000,
+    })
+  })
+})
+
+describe('table_status conversion - RM fields', () => {
+  it('forwards real_money field when present', () => {
+    const payload = {
+      status: 'waiting',
+      seat_id: 0,
+      agent_id: 'agt_x',
+      min_players_to_start: 2,
+      current_players: 1,
+      real_money: true,
+    }
+    const result = formatMessage('table_status', payload) as Record<string, unknown>
+
+    expect(result.type).toBe('table_status')
+    expect(result.real_money).toBe(true)
+  })
+
+  it('does not include real_money key when not present', () => {
+    const payload = {
+      status: 'waiting',
+      seat_id: 0,
+      agent_id: 'agt_x',
+      min_players_to_start: 2,
+      current_players: 1,
+    }
+    const result = formatMessage('table_status', payload) as Record<string, unknown>
+
+    expect(result.type).toBe('table_status')
+    expect(result).not.toHaveProperty('real_money')
+  })
+})

@@ -88,6 +88,20 @@ const nextConfig = {
     };
     return config;
   },
+
+  // Proxy /skill.md to the API server
+  // The API resolves {BASE_URL} and {WS_URL} placeholders in the skill.md template
+  async rewrites() {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ||
+      `http://${process.env.NEXT_PUBLIC_API_HOST || 'localhost'}:${process.env.NEXT_PUBLIC_API_PUBLIC_PORT || '9000'}`;
+    
+    return [
+      {
+        source: '/skill.md',
+        destination: `${apiBase}/skill.md`,
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;
