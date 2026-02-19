@@ -4,14 +4,16 @@ import { redirect } from "next/navigation"
 import { createServerClient } from "@/lib/supabase-server"
 import { AuthProvider } from "@/providers/AuthProvider"
 
-const adminAuthEnabled = process.env.ADMIN_AUTH_ENABLED === "true"
-const adminEmails = parseAdminEmails(process.env.ADMIN_EMAILS || "")
+export const dynamic = "force-dynamic"
 
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const adminAuthEnabled = process.env.ADMIN_AUTH_ENABLED === "true"
+  const adminEmails = parseAdminEmails(process.env.ADMIN_EMAILS || "")
+
   if (adminAuthEnabled) {
     let userEmail: string | null = null
 
