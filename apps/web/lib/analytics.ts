@@ -1,9 +1,8 @@
 /**
  * Analytics tracking abstraction
- * Provides vendor-agnostic event tracking for marketing CTAs and key user actions
+ * Provides vendor-agnostic event tracking for marketing CTAs and key user actions.
+ * Add a provider (e.g. PostHog, Plausible, GA) and call it from trackEvent.
  */
-
-import { track as vercelTrack } from "@vercel/analytics"
 
 interface EventProperties {
   [key: string]: string | number | boolean | undefined
@@ -19,19 +18,12 @@ export function trackEvent(
   properties?: EventProperties
 ): void {
   try {
-    // Vercel Analytics
-    vercelTrack(eventName, properties)
-
-    // Add additional analytics providers here as needed
-    // Example: Google Analytics, PostHog, Plausible, etc.
-
-    // Development logging
+    // Add your analytics provider here (PostHog, Plausible, GA, etc.)
     if (process.env.NODE_ENV === "development") {
       // eslint-disable-next-line no-console
       console.log("[Analytics]", eventName, properties)
     }
   } catch (error) {
-    // Silently fail to avoid disrupting user experience
     if (process.env.NODE_ENV === "development") {
       // eslint-disable-next-line no-console
       console.error("[Analytics] Error tracking event:", error)
@@ -41,7 +33,6 @@ export function trackEvent(
 
 /**
  * Track page view (useful for SPA navigation)
- * Note: Vercel Analytics automatically tracks page views in Next.js
  */
 export function trackPageView(url: string): void {
   try {
