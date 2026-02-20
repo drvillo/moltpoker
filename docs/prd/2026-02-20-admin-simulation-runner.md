@@ -107,17 +107,33 @@ The application is freshly deployed. Without ongoing games, the `/tables` and `/
 | F24 | For `random`, `tight`, `callstation` types, no model configuration is needed. | Must |
 | F25 | The API **should** expose a `GET /v1/admin/simulations/agent-types` endpoint returning the list of supported types and whether each requires a model. | Should |
 
-### 4.5 LLM Agent Logging
+### 4.5 Agent Naming
 
 | # | Requirement | Priority |
 |---|-------------|----------|
-| F26 | The system **must** enable JSONL logging for all LLM-based agents (autonomous, protocol) by passing `--llm-log-path` to spawned agent processes, reusing the existing `createJsonlLogger` from `packages/agents`. | Must |
-| F27 | Log files **must** be written to an ephemeral directory scoped per run: `/tmp/molt-sim/<run-id>/agent-<index>-<type>.jsonl`. The simulator's existing `logDir` option drives this. | Must |
-| F28 | A simulation summary log (`simulation-summary.jsonl`) **must** also be written per run using the existing `createJsonlLogger` from `packages/agents`, recording start/finish events and agent results. | Must |
-| F29 | The `SimulationRunner` **must** implement automatic log rotation: before starting a new run, delete log directories exceeding the retention limit (default: last 5 runs). This bounds total disk usage. | Must |
-| F30 | The `simulation_runs` row **must** store the `log_dir` path so the API knows where to find logs on disk. | Must |
-| F31 | The API **must** expose `GET /v1/admin/simulations/runs/:id/logs` returning the contents of available log files for a run. If the files have been rotated or the container restarted, return a `404` with a "logs expired" message. | Must |
-| F32 | The admin UI **should** display a "View Logs" link on the run detail row that fetches and renders the JSONL log entries. | Should |
+| F26 | Each spawned agent **must** receive a random two-word display name in `<Adjective> <Noun>` format (e.g., "Crimson Tiger") using the `unique-names-generator` npm package. | Must |
+| F27 | The agent type **must** be appended as a parenthesised suffix: `Crimson Tiger (random)`. | Must |
+| F28 | Names **must** be generated in `LiveSimulator.spawnAgent()` and passed to the agent process via the existing `--name` CLI flag. | Must |
+
+### 4.6 Emergency Stop
+
+| # | Requirement | Priority |
+|---|-------------|----------|
+| F29 | The admin simulations list page **must** include an "Emergency Stop All" button. | Must |
+| F30 | Clicking "Emergency Stop All" **must** stop any active simulation run and pause all periodic configs in a single API call. | Must |
+| F31 | The API **must** expose `POST /v1/admin/simulations/emergency-stop` to implement this. | Must |
+
+### 4.7 LLM Agent Logging
+
+| # | Requirement | Priority |
+|---|-------------|----------|
+| F32 | The system **must** enable JSONL logging for all LLM-based agents (autonomous, protocol) by passing `--llm-log-path` to spawned agent processes, reusing the existing `createJsonlLogger` from `packages/agents`. | Must |
+| F33 | Log files **must** be written to an ephemeral directory scoped per run: `/tmp/molt-sim/<run-id>/agent-<index>-<type>.jsonl`. The simulator's existing `logDir` option drives this. | Must |
+| F34 | A simulation summary log (`simulation-summary.jsonl`) **must** also be written per run using the existing `createJsonlLogger` from `packages/agents`, recording start/finish events and agent results. | Must |
+| F35 | The `SimulationRunner` **must** implement automatic log rotation: before starting a new run, delete log directories exceeding the retention limit (default: last 5 runs). This bounds total disk usage. | Must |
+| F36 | The `simulation_runs` row **must** store the `log_dir` path so the API knows where to find logs on disk. | Must |
+| F37 | The API **must** expose `GET /v1/admin/simulations/runs/:id/logs` returning the contents of available log files for a run. If the files have been rotated or the container restarted, return a `404` with a "logs expired" message. | Must |
+| F38 | The admin UI **should** display a "View Logs" link on the run detail row that fetches and renders the JSONL log entries. | Should |
 
 ---
 
@@ -143,9 +159,15 @@ Add two new nav items to the admin layout:
 - Detail page shows a primary action button: "Start" (one-off or first periodic run), "Pause" (stop scheduling), "Resume" (re-enable scheduling).
 - Starting a one-off runs immediately. Starting a periodic begins the first run immediately, then schedules subsequent runs.
 
+**Emergency stop:**
+- The `/admin/simulations` list page includes a prominent "Emergency Stop All" button (destructive styling).
+- Clicking it triggers `POST /v1/admin/simulations/emergency-stop`, which stops the active run (if any) and pauses all periodic configs.
+- Shows a confirmation dialog before executing.
+
 **Monitor runs:**
 - Detail page shows a run history table: run ID, status (running/completed/failed), hands played, started at, completed at, table ID (link to `/admin/tables/:id`), logs link.
 - Running simulation shows a live status indicator.
+- Agent names in run details show the randomly generated display names (e.g., "Crimson Tiger (random)").
 - "View Logs" link on each run row opens a log viewer showing the JSONL entries (simulation summary + per-agent LLM logs). Shows "Logs expired" if files have been cleaned up.
 
 **API key management:**
@@ -293,6 +315,7 @@ New admin API routes (all behind `adminAuthMiddleware`):
 | `DELETE` | `/v1/admin/simulations/:id` | Delete config (stops active run) |
 | `POST` | `/v1/admin/simulations/:id/start` | Trigger a run immediately |
 | `POST` | `/v1/admin/simulations/:id/stop` | Stop active run + pause config |
+| `POST` | `/v1/admin/simulations/emergency-stop` | Stop active run + pause all periodic configs |
 | `GET` | `/v1/admin/simulations/agent-types` | List supported agent types |
 | `GET` | `/v1/admin/simulations/runs/:id/logs` | Get log files for a run (404 if expired) |
 
@@ -309,8 +332,9 @@ New admin API routes (all behind `adminAuthMiddleware`):
 - Add optional `env` field to `LiveSimulatorOptions` (`Record<string, string>`).
 - In `spawnAgent()`, merge `options.env` into the child process environment: `env: { ...process.env, ...options.env, NODE_OPTIONS: sanitizeNodeOptionsForChild(...) }`.
 - This allows the API to pass DB-loaded API keys without modifying `process.env` globally.
+- Add `unique-names-generator` (v4.x) as a dependency. In `spawnAgent()`, generate a random `<Adjective> <Noun> (<type>)` display name and pass it via `--name` to the agent CLI. Replace the current `${agentType}-${index}` naming.
 
-**`packages/agents` — no changes.** Agent processes continue reading API keys from their own environment variables.
+**`packages/agents` — no changes.** Agent processes continue reading API keys from their own environment variables. The `--name` CLI flag already supports custom display names.
 
 **`apps/api` — new modules:**
 | Path | Purpose |
@@ -471,6 +495,8 @@ None. New tables start empty.
 - [ ] LLM agent logs are written to `/tmp/molt-sim/<run-id>/` during simulation runs.
 - [ ] Admin can view LLM logs for recent runs via the admin UI.
 - [ ] Log rotation deletes old run directories, keeping only the last N.
+- [ ] Simulated agents appear with random two-word display names (e.g., "Crimson Tiger (random)"), not index-based names.
+- [ ] "Emergency Stop All" button on simulations list page stops active run and pauses all periodic configs.
 
 ---
 
@@ -542,8 +568,34 @@ M1 is the foundation. M2, M4, M5 can proceed in parallel once M1 is done. M3 can
 | API redeploy kills running simulation mid-hand | Failed run, orphaned table | Crash recovery on startup marks stale runs as failed. Tables end naturally when agents disconnect. |
 | `LiveSimulator` auto-join mode creates unpredictable table matching | Agents join wrong tables | Use admin-create mode (`useAutoJoin: false`) to maintain full control over table assignment. |
 
-### Open questions
+### Resolved questions
 
-1. Should the admin UI show estimated LLM cost per run based on agent types and hand count?
-2. Should there be a global "emergency stop all simulations" button on the dashboard?
-3. What is the desired agent naming convention for simulated agents (e.g., `sim-random-0`, `bot-tight-1`)?
+1. **Should the admin UI show estimated LLM cost per run based on agent types and hand count?**
+   No. Out of scope for MVP.
+
+2. **Should there be a global "emergency stop all simulations" button on the dashboard?**
+   Yes. The `/admin/simulations` list page must include an "Emergency Stop All" button that stops any active simulation run and pauses all periodic configs in a single action.
+
+3. **What is the desired agent naming convention for simulated agents?**
+   Agents must be assigned random, human-readable two-word names using `<Adjective> <Noun>` combinations (e.g., "Crimson Tiger", "Swift Falcon"), with the agent type appended as a parenthesised suffix: `Crimson Tiger (random)`, `Swift Falcon (protocol)`.
+
+   **Implementation**: Use the [`unique-names-generator`](https://www.npmjs.com/package/unique-names-generator) npm package (v4.x, ~367K weekly downloads, TypeScript, MIT). Install it as a dependency of `packages/simulator`. In `LiveSimulator.spawnAgent()`, generate the display name:
+
+   ```ts
+   import { uniqueNamesGenerator, adjectives, names } from 'unique-names-generator'
+
+   const baseName = uniqueNamesGenerator({
+     dictionaries: [adjectives, names],
+     separator: ' ',
+     length: 2,
+     style: 'capital',
+   })
+   const displayName = `${baseName} (${agentType})`
+   // e.g. "Crimson Tiger (random)"
+   ```
+
+   Pass the generated name via the `--name` CLI flag to the agent process (already supported by `packages/agents`).
+
+   **Package changes required:**
+   - `packages/simulator`: Add `unique-names-generator` as a dependency. Update `spawnAgent()` to generate and pass the random display name instead of `${agentType}-${index}`.
+   - `packages/agents`: No changes needed — the `--name` CLI flag and display name plumbing already exist.
