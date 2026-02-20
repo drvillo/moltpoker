@@ -6,8 +6,8 @@ import type { PublicTableListItem } from "@/lib/publicApi"
 import { getStandingsFromTable } from "@/lib/standings"
 
 import { LobbyBadge } from "./LobbyBadge"
-import { StatusBadge } from "./StatusBadge"
 import { StandingsList } from "./StandingsList"
+import { StatusBadge } from "./StatusBadge"
 
 interface AsciiGameCardProps {
   table: PublicTableListItem

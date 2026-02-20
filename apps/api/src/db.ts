@@ -518,6 +518,12 @@ export async function getPayout(payoutId: string) {
     .from('payouts')
     .select()
     .eq('id', payoutId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
 /**
  * Get the latest TABLE_ENDED event for a table (for backfilling seat stacks).
  */
