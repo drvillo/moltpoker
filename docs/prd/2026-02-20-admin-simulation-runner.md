@@ -35,6 +35,7 @@ The application is freshly deployed. Without ongoing games, the `/tables` and `/
 - Distinguishing simulated agents from real agents in the public UI.
 - Supporting the `llm` agent type (requires local file paths; only `autonomous` and `protocol` are supported for LLM-based agents).
 - Real-time log streaming from agent child processes to the admin UI.
+- Durable log storage that survives container restarts (acceptable to lose on redeploy for MVP).
 
 ---
 
@@ -55,6 +56,7 @@ The application is freshly deployed. Without ongoing games, the `/tables` and `/
 4. **As an admin**, I want to pause/resume periodic simulations without deleting the config.
 5. **As an admin**, I want to see the status of running and past simulation runs (started, completed, failed, hands played).
 6. **As an admin**, I want to manage LLM provider API keys (add, list, delete) so that autonomous/protocol agents can call LLM APIs.
+7. **As an admin**, I want to view LLM interaction logs (prompts, responses, reasoning) for recent simulation runs to debug agent behavior.
 
 ---
 
@@ -105,6 +107,18 @@ The application is freshly deployed. Without ongoing games, the `/tables` and `/
 | F24 | For `random`, `tight`, `callstation` types, no model configuration is needed. | Must |
 | F25 | The API **should** expose a `GET /v1/admin/simulations/agent-types` endpoint returning the list of supported types and whether each requires a model. | Should |
 
+### 4.5 LLM Agent Logging
+
+| # | Requirement | Priority |
+|---|-------------|----------|
+| F26 | The system **must** enable JSONL logging for all LLM-based agents (autonomous, protocol) by passing `--llm-log-path` to spawned agent processes, reusing the existing `createJsonlLogger` from `packages/agents`. | Must |
+| F27 | Log files **must** be written to an ephemeral directory scoped per run: `/tmp/molt-sim/<run-id>/agent-<index>-<type>.jsonl`. The simulator's existing `logDir` option drives this. | Must |
+| F28 | A simulation summary log (`simulation-summary.jsonl`) **must** also be written per run using the existing `createJsonlLogger` from `packages/agents`, recording start/finish events and agent results. | Must |
+| F29 | The `SimulationRunner` **must** implement automatic log rotation: before starting a new run, delete log directories exceeding the retention limit (default: last 5 runs). This bounds total disk usage. | Must |
+| F30 | The `simulation_runs` row **must** store the `log_dir` path so the API knows where to find logs on disk. | Must |
+| F31 | The API **must** expose `GET /v1/admin/simulations/runs/:id/logs` returning the contents of available log files for a run. If the files have been rotated or the container restarted, return a `404` with a "logs expired" message. | Must |
+| F32 | The admin UI **should** display a "View Logs" link on the run detail row that fetches and renders the JSONL log entries. | Should |
+
 ---
 
 ## 5. User Experience
@@ -130,8 +144,9 @@ Add two new nav items to the admin layout:
 - Starting a one-off runs immediately. Starting a periodic begins the first run immediately, then schedules subsequent runs.
 
 **Monitor runs:**
-- Detail page shows a run history table: run ID, status (running/completed/failed), hands played, started at, completed at, table ID (link to `/admin/tables/:id`).
+- Detail page shows a run history table: run ID, status (running/completed/failed), hands played, started at, completed at, table ID (link to `/admin/tables/:id`), logs link.
 - Running simulation shows a live status indicator.
+- "View Logs" link on each run row opens a log viewer showing the JSONL entries (simulation summary + per-agent LLM logs). Shows "Logs expired" if files have been cleaned up.
 
 **API key management:**
 - `/admin/api-keys` shows a table of registered keys (provider, label, masked key, date).
@@ -246,6 +261,7 @@ CREATE TABLE simulation_runs (
     CHECK (status IN ('running', 'completed', 'failed')),
   table_id TEXT REFERENCES tables(id) ON DELETE SET NULL,
   hands_played INT DEFAULT 0,
+  log_dir TEXT,                             -- ephemeral path, e.g. /tmp/molt-sim/<run-id>
   error TEXT,
   started_at TIMESTAMPTZ DEFAULT NOW(),
   completed_at TIMESTAMPTZ
@@ -278,6 +294,7 @@ New admin API routes (all behind `adminAuthMiddleware`):
 | `POST` | `/v1/admin/simulations/:id/start` | Trigger a run immediately |
 | `POST` | `/v1/admin/simulations/:id/stop` | Stop active run + pause config |
 | `GET` | `/v1/admin/simulations/agent-types` | List supported agent types |
+| `GET` | `/v1/admin/simulations/runs/:id/logs` | Get log files for a run (404 if expired) |
 
 **Provider API keys:**
 | Method | Path | Description |
@@ -339,7 +356,29 @@ New admin API routes (all behind `adminAuthMiddleware`):
 - **Structured logs**: The `SimulationRunner` logs simulation lifecycle events (start, complete, fail, schedule) using the existing Fastify logger.
 - **Run history in DB**: All runs are persisted with status, timing, and error details — queryable via admin API.
 - **Existing event logging**: Game events (hands, actions) are logged to the `events` table as they are for any table. No additional instrumentation needed.
+- **LLM agent logging**: Reuses the existing `createJsonlLogger` and `--llm-log-path` mechanism from `packages/agents`. Each LLM agent writes prompts, responses, and reasoning to a per-agent JSONL file. The `SimulationRunner` also writes a `simulation-summary.jsonl` per run. All files are scoped under `/tmp/molt-sim/<run-id>/`.
 - **Phase 2**: CloudWatch metrics for run duration, failure rate, agent count.
+
+### 6.9 LLM log lifecycle & disk management
+
+**Write path (no changes to existing packages):**
+1. `SimulationRunner` sets `logDir = /tmp/molt-sim/<run-id>/` on the `LiveSimulatorOptions`.
+2. `LiveSimulator.spawnAgent()` already passes `--llm-log-path <logDir>/agent-<index>-<type>.jsonl` to each LLM agent.
+3. Agent processes use `createJsonlLogger()` to write JSONL — completely unchanged.
+4. The runner also uses `createJsonlLogger()` (imported from `@moltpoker/agents`) to write `simulation-summary.jsonl`.
+
+**Rotation policy:**
+- Before starting a new run, the runner scans `/tmp/molt-sim/` and deletes directories beyond the retention limit (configurable, default: 5 most recent).
+- Disk usage is bounded to approximately `retention_count × max_hands × llm_agents × ~50 KB`. For 5 runs × 20 hands × 2 agents: ~10 MB max.
+
+**Read path:**
+- `GET /v1/admin/simulations/runs/:id/logs` reads the `log_dir` from the DB row, scans the directory for `.jsonl` files, reads each, and returns them as `{ files: [{ name, entries[] }] }`.
+- If the directory doesn't exist (cleaned up or container restarted): returns 404 with `{ error: "logs_expired" }`.
+
+**Durability trade-off:**
+- Logs are ephemeral — lost on container restart/redeploy. This is acceptable for MVP since game events are already persisted in the `events` table.
+- **Phase 2 option A**: After run completes, upload log directory as a tarball to Supabase Storage (S3-compatible, already available, free tier 1 GB).
+- **Phase 2 option B**: Store compressed JSONL in a `logs` column on `simulation_runs` (bounded by a max-size check).
 
 ---
 
@@ -429,6 +468,9 @@ None. New tables start empty.
 - [ ] Only one simulation runs at a time.
 - [ ] API restart recovers gracefully (marks stale runs as failed, reschedules active configs).
 - [ ] Dockerfile builds successfully with simulator + agents packages included.
+- [ ] LLM agent logs are written to `/tmp/molt-sim/<run-id>/` during simulation runs.
+- [ ] Admin can view LLM logs for recent runs via the admin UI.
+- [ ] Log rotation deletes old run directories, keeping only the last N.
 
 ---
 
@@ -448,6 +490,9 @@ None. New tables start empty.
 - Wire runner into API startup/shutdown lifecycle.
 - Implement crash recovery logic.
 - Implement safety timeout.
+- Configure `logDir` per run (`/tmp/molt-sim/<run-id>/`) and write simulation summary JSONL.
+- Implement log rotation (delete directories beyond retention limit before each new run).
+- Implement `GET /v1/admin/simulations/runs/:id/logs` endpoint to serve log files from disk.
 
 ### M3: Dockerfile & build (infrastructure)
 
@@ -466,9 +511,9 @@ None. New tables start empty.
 
 - Create `/admin/simulations/page.tsx` (list view).
 - Create `/admin/simulations/create/page.tsx` (create form with agent slot builder).
-- Create `/admin/simulations/[id]/page.tsx` (detail + run history + controls).
+- Create `/admin/simulations/[id]/page.tsx` (detail + run history + controls + log viewer).
 - Add "Simulations" nav link to admin layout.
-- Add `simulationApi` client methods to `lib/api.ts`.
+- Add `simulationApi` client methods to `lib/api.ts` (including `getRunLogs`).
 
 ### M6: Testing & hardening
 
