@@ -175,6 +175,27 @@ async function handleAction(
     )
     .catch((err) => console.error('Failed to log action:', err));
 
+  if (result.streetsDealt) {
+    for (const sd of result.streetsDealt) {
+      eventLogger
+        .log(
+          'STREET_DEALT',
+          {
+            handNumber: runtime.getHandNumber(),
+            street: sd.street,
+            cards: sd.cards,
+          },
+          runtime.getHandNumber()
+        )
+        .catch((err) => console.error('Failed to log street dealt:', err));
+      broadcastManager.broadcastStreetDealt(tableId, {
+        handNumber: runtime.getHandNumber(),
+        street: sd.street,
+        cards: sd.cards,
+      });
+    }
+  }
+
   if (handComplete) {
     eventLogger
       .log('HAND_COMPLETE', handComplete as Record<string, unknown>, runtime.getHandNumber())

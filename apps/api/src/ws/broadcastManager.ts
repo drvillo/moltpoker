@@ -4,6 +4,7 @@ import type {
   ErrorPayload,
   GameStatePayload,
   HandCompletePayload,
+  StreetDealtPayload,
   TableStatusPayload,
   WelcomePayload,
   WsMessageEnvelope,
@@ -368,6 +369,23 @@ class BroadcastManager {
     if (observers) {
       for (const ws of observers) {
         this.sendHuman(ws, 'hand_complete', payload, tableId)
+      }
+    }
+  }
+
+  /**
+   * Broadcast street dealt to all connections at a table
+   */
+  broadcastStreetDealt(tableId: string, payload: StreetDealtPayload): void {
+    const connections = this.getConnections(tableId)
+    for (const conn of connections) {
+      this.sendTo(conn.ws, conn.format, 'street_dealt', payload, tableId)
+    }
+
+    const observers = this.observers.get(tableId)
+    if (observers) {
+      for (const ws of observers) {
+        this.sendHuman(ws, 'street_dealt', payload, tableId)
       }
     }
   }

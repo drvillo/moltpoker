@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { AsciiLogo, AsciiCardRow, AsciiTableDisplay, AsciiDivider, StatusBadge } from "@/components/ascii"
+import { AsciiLogo, AsciiCardRow, AsciiTableDisplay, AsciiDivider, StatusBadge, StandingsList } from "@/components/ascii"
 import { publicApi, type PublicTableDetail } from "@/lib/publicApi"
 import {
   buildReplayData,
@@ -587,46 +587,7 @@ export default function TableDetailPage() {
               {finalStacks.length > 0 && (
                 <div className="border border-slate-800 rounded-lg p-4 sm:p-6 bg-slate-900/30">
                   <h2 className="font-mono text-sm text-slate-400 mb-4">Standings</h2>
-                  <div className="space-y-2">
-                    {finalStacks.map((standing, i) => {
-                      const name = standing.agentName ?? `Seat ${standing.seatId}`
-                      const isWinner = i === 0
-                      const nameColor = isWinner ? "text-amber-400" : "text-slate-300"
-                      const changeColor = standing.netChange > 0
-                        ? "text-amber-400"
-                        : standing.netChange < 0
-                          ? "text-red-400"
-                          : "text-slate-500"
-                      const changeStr = standing.netChange > 0 ? `+${standing.netChange}` : String(standing.netChange)
-                      return (
-                        <div
-                          key={standing.seatId}
-                          className="flex items-baseline justify-between gap-2 font-mono text-xs min-w-0"
-                        >
-                          <div className="flex items-baseline gap-1.5 min-w-0 shrink">
-                            <span className="text-slate-600 shrink-0 tabular-nums w-4 text-right">
-                              {i + 1}.
-                            </span>
-                            <span className="text-slate-500 shrink-0">S{standing.seatId}</span>
-                            <span className={`${nameColor} truncate`}>{name}</span>
-                            {isWinner && (
-                              <span className="text-amber-400/60 shrink-0">★</span>
-                            )}
-                          </div>
-                          <div className="flex items-baseline gap-2 shrink-0">
-                            <span className="text-red-400 tabular-nums text-right">
-                              {standing.stack.toLocaleString()}
-                            </span>
-                            <span
-                              className={`${changeColor} tabular-nums w-12 text-right`}
-                            >
-                              {changeStr}
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <StandingsList standings={finalStacks} />
                 </div>
               )}
             </div>

@@ -4,6 +4,7 @@ import type {
   GameStatePayload,
   HandCompletePayload,
   PlayerState,
+  StreetDealtPayload,
   WelcomePayload,
   WsMessageEnvelope,
 } from '@moltpoker/shared'
@@ -28,6 +29,8 @@ export function formatMessage(
       return compactGameState(payload as GameStatePayload)
     case 'hand_complete':
       return compactHandComplete(payload as HandCompletePayload)
+    case 'street_dealt':
+      return compactStreetDealt(payload as StreetDealtPayload)
     case 'welcome':
       return compactWelcome(payload as WelcomePayload)
     case 'ack':
@@ -119,6 +122,15 @@ function compactGameState(state: GameStatePayload): Record<string, unknown> {
   if (state.turn_token) out.turn_token = state.turn_token
 
   return out
+}
+
+function compactStreetDealt(payload: StreetDealtPayload): Record<string, unknown> {
+  return {
+    type: 'street_dealt',
+    hand: payload.handNumber,
+    street: payload.street,
+    cards: cardsStr(payload.cards),
+  }
 }
 
 function compactHandComplete(payload: HandCompletePayload): Record<string, unknown> {

@@ -3,9 +3,11 @@
 import Link from "next/link"
 
 import type { PublicTableListItem } from "@/lib/publicApi"
+import { getStandingsFromTable } from "@/lib/standings"
 
 import { LobbyBadge } from "./LobbyBadge"
 import { StatusBadge } from "./StatusBadge"
+import { StandingsList } from "./StandingsList"
 
 interface AsciiGameCardProps {
   table: PublicTableListItem
@@ -40,59 +42,13 @@ function truncateId(id: string): string {
 }
 
 function EndedBody({ table }: { table: PublicTableListItem }) {
-  const { initialStack } = table.config
-  const standings = table.seats
-    .filter(s => s.agentId)
-    .sort((a, b) => b.stack - a.stack)
-
-  if (standings.length === 0) return (
-    <div className="text-slate-600 text-xs">No players recorded.</div>
-  )
-
-  return (
-    <div className="space-y-1">
-      {standings.map((seat, i) => {
-        const netChange = seat.stack - initialStack
-        const isWinner = i === 0
-        const nameColor = isWinner ? "text-amber-400" : "text-slate-300"
-        const changeColor = netChange > 0
-          ? "text-green-400"
-          : netChange < 0
-            ? "text-red-400"
-            : "text-slate-600"
-
-        return (
-          <div
-            key={seat.seatId}
-            className="flex items-baseline justify-between text-xs sm:text-sm"
-          >
-            <div className="flex items-baseline gap-1 min-w-0">
-              <span className="text-slate-600 w-5 shrink-0 text-right">
-                {i + 1}.
-              </span>
-              <span className={`${nameColor} truncate`}>
-                {seat.agentName ?? `Seat ${seat.seatId}`}
-              </span>
-              {isWinner && (
-                <span className="text-amber-400/60 text-xs shrink-0">★</span>
-              )}
-            </div>
-            <div className="flex items-baseline gap-2 sm:gap-3 shrink-0 ml-2">
-              <span className="text-slate-300 tabular-nums w-10 sm:w-12 text-right">
-                {seat.stack.toLocaleString()}
-              </span>
-              <span
-                className={`${changeColor} tabular-nums w-12 sm:w-14 text-right text-xs`}
-              >
-                {netChange > 0 ? "+" : ""}
-                {netChange.toLocaleString()}
-              </span>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
+  const standings = getStandingsFromTable(table)
+  if (standings.length === 0) {
+    return (
+      <div className="text-slate-600 text-xs">No players recorded.</div>
+    )
+  }
+  return <StandingsList standings={standings} compact />
 }
 
 export function AsciiGameCard({ table, className = "" }: AsciiGameCardProps) {

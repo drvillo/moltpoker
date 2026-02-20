@@ -1,15 +1,15 @@
 import { getDefaultTimeoutAction } from '@moltpoker/poker';
 
 import { broadcastManager } from '../ws/broadcastManager.js';
-import * as db from '../db.js';
 
+import { endTable } from './endTable.js';
 import { tableManager } from './manager.js';
+import { scheduledNextHandForHand } from './nextHandScheduler.js';
 
 /** Delay before auto-starting next hand (ms) */
 const NEXT_HAND_DELAY_MS = 1500;
 
-/** Track which hand numbers have scheduled next-hand */
-const scheduledNextHandForHand = new Map<string, number>();
+export { clearScheduledNextHand } from './nextHandScheduler.js';
 
 /**
  * Auto-start the next hand after a delay
@@ -45,7 +45,7 @@ export function scheduleNextHand(tableId: string): void {
     const handStarted = runtime.startHand();
 
     if (!handStarted) {
-      await endCompletedTable(tableId, 'insufficient_players');
+      await endTable({ tableId, reason: 'insufficient_players', source: 'timeout' });
       return;
     }
 
@@ -145,6 +145,27 @@ export async function handleActionTimeout(tableId: string, seatId: number): Prom
       )
       .catch((err) => console.error('Failed to log action:', err));
 
+    if (result.streetsDealt) {
+      for (const sd of result.streetsDealt) {
+        eventLogger
+          .log(
+            'STREET_DEALT',
+            {
+              handNumber: runtime.getHandNumber(),
+              street: sd.street,
+              cards: sd.cards,
+            },
+            runtime.getHandNumber()
+          )
+          .catch((err) => console.error('Failed to log street dealt:', err));
+        broadcastManager.broadcastStreetDealt(tableId, {
+          handNumber: runtime.getHandNumber(),
+          street: sd.street,
+          cards: sd.cards,
+        });
+      }
+    }
+
     if (handComplete) {
       eventLogger
         .log('HAND_COMPLETE', handComplete as Record<string, unknown>, runtime.getHandNumber())
@@ -178,47 +199,4 @@ export function scheduleActionTimeout(tableId: string): void {
  */
 export function clearActionTimeout(tableId: string, seatId: number): void {
   tableManager.clearActionTimeout(tableId, seatId);
-}
-
-/**
- * Clear scheduled next-hand for a table (cleanup when table is destroyed)
- */
-export function clearScheduledNextHand(tableId: string): void {
-  scheduledNextHandForHand.delete(tableId);
-}
-
-async function endCompletedTable(tableId: string, reason: string): Promise<void> {
-  const managedTable = tableManager.get(tableId);
-  if (!managedTable) return;
-
-  const { runtime, eventLogger } = managedTable;
-  const finalStacks = runtime.getAllPlayers().map((player) => ({
-    seatId: player.seatId,
-    agentId: player.agentId,
-    stack: player.stack,
-  }));
-
-  await eventLogger.log('TABLE_ENDED', {
-    reason,
-    finalStacks,
-  });
-
-  broadcastManager.broadcastTableStatus(
-    tableId,
-    {
-      status: 'ended',
-      reason,
-      final_stacks: finalStacks.map((stack) => ({
-        seat_id: stack.seatId,
-        agent_id: stack.agentId,
-        stack: stack.stack,
-      })),
-    },
-    { includeObservers: true }
-  );
-
-  broadcastManager.disconnectAll(tableId);
-  clearScheduledNextHand(tableId);
-  tableManager.destroy(tableId);
-  await db.updateTableStatus(tableId, 'ended');
 }

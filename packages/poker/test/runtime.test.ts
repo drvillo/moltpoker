@@ -141,6 +141,109 @@ describe('TableRuntime', () => {
     });
   });
 
+  describe('streetsDealt metadata', () => {
+    beforeEach(() => {
+      runtime.addPlayer(0, 'agent-1', 'Agent 1');
+      runtime.addPlayer(1, 'agent-2', 'Agent 2');
+      runtime.startHand();
+    });
+
+    it('returns streetsDealt with flop when preflop betting completes', () => {
+      // First to act preflop (after BB) calls, then BB checks → flop dealt
+      const first = runtime.getCurrentSeat();
+      runtime.applyAction(first, { turn_token: runtime.getTurnToken(), kind: 'call' });
+      const result = runtime.applyAction(runtime.getCurrentSeat(), {
+        turn_token: runtime.getTurnToken(),
+        kind: 'check',
+      });
+      expect(result.success).toBe(true);
+      expect(result.streetsDealt).toBeDefined();
+      expect(result.streetsDealt).toHaveLength(1);
+      expect(result.streetsDealt![0].street).toBe('flop');
+      expect(result.streetsDealt![0].cards).toHaveLength(3);
+    });
+
+    it('returns streetsDealt with turn when flop betting completes', () => {
+      // Complete preflop: call, check
+      const first = runtime.getCurrentSeat();
+      runtime.applyAction(first, { turn_token: runtime.getTurnToken(), kind: 'call' });
+      runtime.applyAction(runtime.getCurrentSeat(), { turn_token: runtime.getTurnToken(), kind: 'check' });
+      // Complete flop: check, check
+      const onFlop = runtime.getCurrentSeat();
+      runtime.applyAction(onFlop, { turn_token: runtime.getTurnToken(), kind: 'check' });
+      const result = runtime.applyAction(runtime.getCurrentSeat(), {
+        turn_token: runtime.getTurnToken(),
+        kind: 'check',
+      });
+      expect(result.success).toBe(true);
+      expect(result.streetsDealt).toHaveLength(1);
+      expect(result.streetsDealt![0].street).toBe('turn');
+      expect(result.streetsDealt![0].cards).toHaveLength(1);
+    });
+
+    it('returns streetsDealt with river when turn betting completes', () => {
+      // Complete preflop
+      const first = runtime.getCurrentSeat();
+      runtime.applyAction(first, { turn_token: runtime.getTurnToken(), kind: 'call' });
+      runtime.applyAction(runtime.getCurrentSeat(), { turn_token: runtime.getTurnToken(), kind: 'check' });
+      // Complete flop
+      runtime.applyAction(runtime.getCurrentSeat(), { turn_token: runtime.getTurnToken(), kind: 'check' });
+      runtime.applyAction(runtime.getCurrentSeat(), { turn_token: runtime.getTurnToken(), kind: 'check' });
+      // Complete turn: check, check
+      runtime.applyAction(runtime.getCurrentSeat(), { turn_token: runtime.getTurnToken(), kind: 'check' });
+      const result = runtime.applyAction(runtime.getCurrentSeat(), {
+        turn_token: runtime.getTurnToken(),
+        kind: 'check',
+      });
+      expect(result.success).toBe(true);
+      expect(result.streetsDealt).toHaveLength(1);
+      expect(result.streetsDealt![0].street).toBe('river');
+      expect(result.streetsDealt![0].cards).toHaveLength(1);
+    });
+
+    it('returns undefined streetsDealt when action does not complete a street', () => {
+      const currentSeat = runtime.getCurrentSeat();
+      const result = runtime.applyAction(currentSeat, {
+        turn_token: runtime.getTurnToken(),
+        kind: 'call',
+      });
+      expect(result.success).toBe(true);
+      expect(result.streetsDealt).toBeUndefined();
+    });
+
+    it('returns multiple streetsDealt on all-in run-out', () => {
+      const rt = new TableRuntime({ ...config, seed: 'allin-runout', initialStack: 100 });
+      rt.addPlayer(0, 'agent-1', 'Agent 1');
+      rt.addPlayer(1, 'agent-2', 'Agent 2');
+      rt.startHand();
+      // Blinds 1/2: SB has 99, BB has 98. First to act raises to 100 (all-in for SB), BB calls 98 (all-in) → runOutBoard
+      const first = rt.getCurrentSeat();
+      rt.applyAction(first, {
+        turn_token: rt.getTurnToken(),
+        kind: 'raiseTo',
+        amount: 100,
+      });
+      const callResult = rt.applyAction(rt.getCurrentSeat(), {
+        turn_token: rt.getTurnToken(),
+        kind: 'call',
+      });
+      expect(callResult.success).toBe(true);
+      expect(callResult.streetsDealt).toBeDefined();
+      expect(callResult.streetsDealt!.length).toBe(3);
+      expect(callResult.streetsDealt!.map((s) => s.street)).toEqual(['flop', 'turn', 'river']);
+    });
+
+    it('does not return streetsDealt when fold ends the hand', () => {
+      const currentSeat = runtime.getCurrentSeat();
+      const result = runtime.applyAction(currentSeat, {
+        turn_token: runtime.getTurnToken(),
+        kind: 'fold',
+      });
+      expect(result.success).toBe(true);
+      expect(result.streetsDealt).toBeUndefined();
+    });
+  });
+
   describe('forceFold', () => {
     beforeEach(() => {
       runtime.addPlayer(0, 'agent-1', 'Agent 1');

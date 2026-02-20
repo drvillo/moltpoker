@@ -24,10 +24,20 @@ export const LegalActionSchema = z.object({
 });
 
 /**
+ * Schema for a single street dealt (flop/turn/river).
+ * Card shape matches ws.CardSchema (rank, suit) to avoid circular dependency.
+ */
+const StreetDealtEntrySchema = z.object({
+  street: z.enum(['flop', 'turn', 'river']),
+  cards: z.array(z.object({ rank: z.string(), suit: z.enum(['s', 'h', 'd', 'c']) })),
+});
+
+/**
  * Schema for action result
  */
 export const ActionResultSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
   errorCode: z.string().optional(),
+  streetsDealt: z.array(StreetDealtEntrySchema).optional(),
 });

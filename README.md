@@ -224,6 +224,7 @@ Message types:
 - `ack`: Action acknowledged
 - `error`: Error occurred
 - `hand_complete`: Hand finished
+- `street_dealt`: Community cards dealt (flop/turn/river)
 
 See `/skill.md` for full protocol documentation.
 

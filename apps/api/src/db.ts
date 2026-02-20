@@ -217,6 +217,29 @@ export async function clearSeat(tableId: string, seatId: number) {
   if (error) throw error;
 }
 
+export interface FinalStackRow {
+  seatId: number;
+  stack: number;
+}
+
+/**
+ * Batch-update seat stacks for a table (single DB round-trip).
+ * Only updates stack; does not touch agent_id or is_active.
+ * Returns the number of rows updated.
+ */
+export async function updateSeatStacksBatch(
+  tableId: string,
+  finalStacks: FinalStackRow[]
+): Promise<number> {
+  if (finalStacks.length === 0) return 0;
+  const { data, error } = await getDb().rpc('update_seat_stacks', {
+    p_table_id: tableId,
+    p_stacks: finalStacks,
+  });
+  if (error) throw error;
+  return typeof data === 'number' ? data : 0;
+}
+
 export async function findAvailableSeat(tableId: string, preferredSeat?: number) {
   // First try preferred seat
   if (preferredSeat !== undefined) {
@@ -343,4 +366,23 @@ export async function getLastEventSeq(tableId: string): Promise<number> {
 
   if (error && error.code !== 'PGRST116') throw error;
   return data?.seq ?? 0;
+}
+
+/**
+ * Get the latest TABLE_ENDED event for a table (for backfilling seat stacks).
+ */
+export async function getLatestTableEndedEvent(tableId: string): Promise<{
+  payload: { finalStacks?: Array<{ seatId: number; agentId: string; stack: number }> };
+} | null> {
+  const { data, error } = await getDb()
+    .from('events')
+    .select('payload')
+    .eq('table_id', tableId)
+    .eq('type', 'TABLE_ENDED')
+    .order('seq', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
 }

@@ -61,6 +61,7 @@ import {
   PlayerStateSchema,
   PongPayloadSchema,
   PotSchema,
+  StreetDealtPayloadSchema,
   TableStatusPayloadSchema,
   WelcomePayloadSchema,
   WsMessageEnvelopeSchema,
@@ -109,6 +110,7 @@ export type AckPayload = z.infer<typeof AckPayloadSchema>;
 export type ErrorPayload = z.infer<typeof ErrorPayloadSchema>;
 export type HandResult = z.infer<typeof HandResultSchema>;
 export type HandCompletePayload = z.infer<typeof HandCompletePayloadSchema>;
+export type StreetDealtPayload = z.infer<typeof StreetDealtPayloadSchema>;
 export type PingPayload = z.infer<typeof PingPayloadSchema>;
 export type PongPayload = z.infer<typeof PongPayloadSchema>;
 export type TableStatusPayload = z.infer<typeof TableStatusPayloadSchema>;
