@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Setup GitHub repository secrets and variables for CI/CD
+# Copy this to setup-github-cicd.sh and fill in your values
+
+set -e
+
+REPO="your-github-username/your-repo-name"
+
+echo "======================================"
+echo "  GitHub Actions CI/CD Setup"
+echo "======================================"
+echo ""
+echo "Setting up secrets and variables for: $REPO"
+echo ""
+
+# Add GitHub Secret for Supabase Anon Key
+echo "1. Adding GitHub Secret: NEXT_PUBLIC_SUPABASE_ANON_KEY"
+gh secret set NEXT_PUBLIC_SUPABASE_ANON_KEY \
+  --repo "$REPO" \
+  --body "your-supabase-anon-key"
+echo "   ✅ Secret added"
+echo ""
+
+# Add GitHub Variables (optional - workflows have defaults)
+echo "2. Adding GitHub Variables:"
+
+echo "   - AWS_REGION"
+gh variable set AWS_REGION \
+  --repo "$REPO" \
+  --body "us-east-1"
+echo "   ✅ Variable added"
+
+echo "   - NEXT_PUBLIC_SUPABASE_URL"
+gh variable set NEXT_PUBLIC_SUPABASE_URL \
+  --repo "$REPO" \
+  --body "https://your-project.supabase.co"
+echo "   ✅ Variable added"
+
+echo "   - NEXT_PUBLIC_API_URL"
+gh variable set NEXT_PUBLIC_API_URL \
+  --repo "$REPO" \
+  --body "https://your-api-url.awsapprunner.com"
+echo "   ✅ Variable added"
+
+echo "   - NEXT_PUBLIC_SITE_URL"
+gh variable set NEXT_PUBLIC_SITE_URL \
+  --repo "$REPO" \
+  --body "https://your-web-url.awsapprunner.com"
+echo "   ✅ Variable added"
+
+echo ""
+echo "======================================"
+echo "  ✅ GitHub CI/CD Setup Complete!"
+echo "======================================"
+echo ""
+echo "OIDC Role ARN: arn:aws:iam::YOUR_ACCOUNT_ID:role/GitHubActionsDeployRole"
+echo ""
+echo "Next steps:"
+echo "1. Push code to main branch"
+echo "2. GitHub Actions will automatically build and deploy"
+echo "3. Check deployment: https://github.com/$REPO/actions"
+echo ""

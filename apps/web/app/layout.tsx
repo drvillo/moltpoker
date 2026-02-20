@@ -1,5 +1,3 @@
-import { Analytics } from "@vercel/analytics/react"
-import { SpeedInsights } from "@vercel/speed-insights/next"
 import type { Metadata } from "next"
 import { JetBrains_Mono, Inter } from "next/font/google"
 
@@ -68,8 +66,6 @@ export default function RootLayout({
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans bg-[#0a0a0a] text-slate-300 antialiased`}
       >
         {children}
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   )
