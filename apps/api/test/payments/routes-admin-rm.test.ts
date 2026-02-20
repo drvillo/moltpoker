@@ -13,6 +13,8 @@ vi.mock('../../src/db.js', () => ({
   createSeats: vi.fn(),
   getSeats: vi.fn(),
   listTables: vi.fn(),
+  listTablesPaginated: vi.fn(),
+  findWaitingTableInBucket: vi.fn(),
   getTable: vi.fn(),
 }))
 
@@ -163,7 +165,8 @@ describe('Admin Routes - Real Money', () => {
     it('table with realMoney: true in config: response includes realMoney: true', async () => {
       const rmTable = makeTableRow({ id: 'tbl_rm', config: { realMoney: true } })
 
-      dbMock.listTables.mockResolvedValue([rmTable])
+      dbMock.findWaitingTableInBucket.mockResolvedValue(null)
+      dbMock.listTablesPaginated.mockResolvedValue({ data: [rmTable], hasMore: false })
       dbMock.getSeats.mockResolvedValue([
         { seat_id: 0, agent_id: null, stack: 0, is_active: true, agents: null },
       ])
@@ -185,7 +188,8 @@ describe('Admin Routes - Real Money', () => {
     it('table with realMoney: false in config: response includes realMoney: false', async () => {
       const ftpTable = makeTableRow({ id: 'tbl_ftp', config: { realMoney: false } })
 
-      dbMock.listTables.mockResolvedValue([ftpTable])
+      dbMock.findWaitingTableInBucket.mockResolvedValue(null)
+      dbMock.listTablesPaginated.mockResolvedValue({ data: [ftpTable], hasMore: false })
       dbMock.getSeats.mockResolvedValue([
         { seat_id: 0, agent_id: null, stack: 0, is_active: true, agents: null },
       ])
@@ -206,7 +210,8 @@ describe('Admin Routes - Real Money', () => {
     it('table with no realMoney in config (legacy): response defaults to realMoney: false', async () => {
       const legacyTable = makeTableRow({ id: 'tbl_legacy', config: {} }) // no realMoney field
 
-      dbMock.listTables.mockResolvedValue([legacyTable])
+      dbMock.findWaitingTableInBucket.mockResolvedValue(null)
+      dbMock.listTablesPaginated.mockResolvedValue({ data: [legacyTable], hasMore: false })
       dbMock.getSeats.mockResolvedValue([
         { seat_id: 0, agent_id: null, stack: 0, is_active: true, agents: null },
       ])

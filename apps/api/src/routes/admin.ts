@@ -559,6 +559,7 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
         // Find which table the agent is seated at
         let targetTableId: string | null = null;
         let targetSeatId: number | null = null;
+        let targetTableStatus: string | null = null;
 
         // Check all tables for seat assignment
         const allTables = await db.listTables();
@@ -568,6 +569,7 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
           if (seat) {
             targetTableId = table.id;
             targetSeatId = seat.seat_id;
+            targetTableStatus = table.status;
             break;
           }
         }
@@ -591,6 +593,15 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
               code: ErrorCodes.TABLE_NOT_FOUND,
               message: 'Agent seat not found',
             },
+          });
+        }
+
+        if (targetTableStatus === 'ended') {
+          return reply.status(200).send({
+            success: true,
+            message: 'Table already ended; kick is a no-op',
+            table_id: targetTableId,
+            seat_id: targetSeatId,
           });
         }
 

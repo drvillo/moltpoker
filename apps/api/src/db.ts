@@ -154,6 +154,33 @@ export async function listTables(status?: string) {
   return data || [];
 }
 
+export async function listTablesPaginated(options: {
+  status?: string;
+  limit: number;
+  offset: number;
+  excludeTableId?: string;
+}): Promise<{ data: Awaited<ReturnType<typeof listTables>>; hasMore: boolean }> {
+  const { status, limit, offset, excludeTableId } = options;
+  let query = getDb().from('tables').select();
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+  if (excludeTableId) {
+    query = query.neq('id', excludeTableId);
+  }
+
+  const { data, error } = await query
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit);
+
+  if (error) throw error;
+  const rows = data || [];
+  const hasMore = rows.length > limit;
+  const result = hasMore ? rows.slice(0, limit) : rows;
+  return { data: result, hasMore };
+}
+
 // Seat operations
 export async function createSeats(tableId: string, maxSeats: number) {
   const seats = Array.from({ length: maxSeats }, (_, i) => ({

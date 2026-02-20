@@ -16,10 +16,26 @@ interface Table {
   bucket_key?: string;
 }
 
+const PAGE_SIZE = 10;
+
 export default function TablesPage() {
   const [tables, setTables] = useState<Table[]>([]);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [endingTableId, setEndingTableId] = useState<string | null>(null);
+
+  async function loadTables() {
+    try {
+      const { tables: next, hasMore: more } = await adminApi.listTables({ limit: PAGE_SIZE, offset: 0 });
+      setTables(next);
+      setHasMore(more);
+    } catch (err) {
+      console.error('Failed to load tables:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     loadTables();
@@ -27,14 +43,19 @@ export default function TablesPage() {
     return () => clearInterval(interval);
   }, []);
 
-  async function loadTables() {
+  async function handleLoadMore() {
+    setLoadingMore(true);
     try {
-      const data = await adminApi.listTables();
-      setTables(data);
+      const { tables: next, hasMore: more } = await adminApi.listTables({
+        limit: PAGE_SIZE,
+        offset: tables.length,
+      });
+      setTables((prev) => [...prev, ...next]);
+      setHasMore(more);
     } catch (err) {
-      console.error('Failed to load tables:', err);
+      console.error('Failed to load more tables:', err);
     } finally {
-      setLoading(false);
+      setLoadingMore(false);
     }
   }
 
@@ -126,6 +147,17 @@ export default function TablesPage() {
             </tbody>
           </table>
         </div>
+        {hasMore && (
+          <div className="p-4 border-t dark:border-gray-700 text-center">
+            <Button
+              variant="outline"
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore ? 'Loading...' : 'Load more'}
+            </Button>
+          </div>
+        )}
       </Card>
     </div>
   );

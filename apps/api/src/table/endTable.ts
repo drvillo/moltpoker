@@ -32,6 +32,9 @@ export async function endTable({ tableId, reason, source: _source }: EndTableOpt
     await managedTable.eventLogger.log('TABLE_ENDED', { reason, finalStacks });
   }
 
+  // Invariant: terminal table state is persisted with final stacks while
+  // preserving seat ownership (agent_id). Ended-table history must stay
+  // readable by public list/detail endpoints and match replay final stacks.
   if (finalStacks.length > 0) {
     await db.updateSeatStacksBatch(tableId, finalStacks.map((s) => ({ seatId: s.seatId, stack: s.stack })));
   }

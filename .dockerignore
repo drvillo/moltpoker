@@ -29,11 +29,6 @@ coverage
 # Apps not needed for the API image
 # apps/web  # Commented out for web app build
 
-# Packages not needed for the API image
-packages/agents
-packages/simulator
-packages/sdk
-
 # Documentation
 docs
 

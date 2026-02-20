@@ -60,10 +60,19 @@ function EmptyState() {
   )
 }
 
+const PAGE_SIZE = 10
+
+function getStatusParam(filter: StatusFilter): "waiting" | "running" | "ended" | undefined {
+  if (filter === "all" || filter === "lobby") return filter === "lobby" ? "waiting" : undefined
+  return filter
+}
+
 function TablesPageContent() {
   const searchParams = useSearchParams()
   const [tables, setTables] = useState<PublicTableListItem[]>([])
+  const [hasMore, setHasMore] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
 
@@ -89,19 +98,51 @@ function TablesPageContent() {
   }, [searchParams])
 
   useEffect(() => {
+    let cancelled = false
     async function loadTables() {
+      setTables([])
+      setHasMore(false)
+      setIsLoading(true)
+      setError(null)
       try {
-        const data = await publicApi.listTables()
-        setTables(data)
+        const { tables: next, hasMore: more } = await publicApi.listTables({
+          status: getStatusParam(filter),
+          limit: PAGE_SIZE,
+          offset: 0,
+        })
+        if (!cancelled) {
+          setTables(next)
+          setHasMore(more)
+        }
       } catch (err) {
-        console.error("Failed to load tables:", err)
-        setError("Failed to load games. Please try again later.")
+        if (!cancelled) {
+          console.error("Failed to load tables:", err)
+          setError("Failed to load games. Please try again later.")
+        }
       } finally {
-        setIsLoading(false)
+        if (!cancelled) setIsLoading(false)
       }
     }
     loadTables()
-  }, [])
+    return () => { cancelled = true }
+  }, [filter])
+
+  async function handleLoadMore() {
+    setIsLoadingMore(true)
+    try {
+      const { tables: next, hasMore: more } = await publicApi.listTables({
+        status: getStatusParam(filter),
+        limit: PAGE_SIZE,
+        offset: tables.length,
+      })
+      setTables((prev) => [...prev, ...next])
+      setHasMore(more)
+    } catch (err) {
+      console.error("Failed to load more tables:", err)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
 
   const filteredTables = filter === "all"
     ? tables
@@ -162,11 +203,25 @@ function TablesPageContent() {
       )}
 
       {!isLoading && !error && filteredTables.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-          {filteredTables.map((table) => (
-            <AsciiGameCard key={table.id} table={table} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            {filteredTables.map((table) => (
+              <AsciiGameCard key={table.id} table={table} />
+            ))}
+          </div>
+          {hasMore && (
+            <div className="mt-8 text-center">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={isLoadingMore}
+                className="font-mono text-xs px-4 py-2 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:border-slate-500 disabled:opacity-50"
+              >
+                {isLoadingMore ? "Loading..." : "Load more"}
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Footer hint */}

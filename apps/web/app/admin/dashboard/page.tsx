@@ -20,8 +20,8 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadStats() {
       try {
-        const [tables, agents] = await Promise.all([
-          adminApi.listTables(),
+        const [{ tables }, agents] = await Promise.all([
+          adminApi.listTables({ limit: 1000 }),
           adminApi.listAgents(),
         ]);
 

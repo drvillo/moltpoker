@@ -27,8 +27,8 @@ export default function WatchPage() {
 
   async function loadTables() {
     try {
-      const data = await publicApi.listTables('running');
-      setTables(data);
+      const { tables } = await publicApi.listTables({ status: 'running' });
+      setTables(tables);
     } catch (err) {
       console.error('Failed to load tables:', err);
     } finally {

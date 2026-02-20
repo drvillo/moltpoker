@@ -91,60 +91,78 @@ export async function checkAndAutoStart(
   return false
 }
 
+async function enrichTableToListItem(table: { id: string; status: string; config: unknown; created_at: string; bucket_key?: string }): Promise<TableListItem | null> {
+  if (table.status === 'running' && !tableManager.has(table.id)) {
+    return null;
+  }
+  const seats = await db.getSeats(table.id);
+  const tableConfig = TableConfigSchema.parse(table.config);
+  const seatList: Seat[] = seats.map((s) => ({
+    seatId: s.seat_id,
+    agentId: s.agent_id,
+    agentName: s.agents?.name ?? null,
+    stack: s.stack,
+    isActive: s.is_active,
+  }));
+  const availableSeats = seatList.filter((s) => !s.agentId).length;
+  const playerCount = seatList.filter((s) => s.agentId).length;
+  return {
+    id: table.id,
+    status: table.status as TableListItem['status'],
+    config: tableConfig,
+    seats: seatList,
+    availableSeats,
+    playerCount,
+    created_at: new Date(table.created_at),
+    bucket_key: table.bucket_key ?? 'default',
+    realMoney: tableConfig.realMoney ?? false,
+  };
+}
+
 export function registerTableRoutes(fastify: FastifyInstance): void {
   /**
-   * GET /v1/tables - List available tables
+   * GET /v1/tables - List available tables (paginated)
    * Query params:
    *   - status: Filter by status ('waiting', 'running', 'ended')
-   * 
-   * Note: For 'running' status, only returns tables with active runtimes.
-   * Tables that show 'running' in DB but have no active runtime (e.g., after server restart)
-   * are automatically excluded to prevent observer connection errors.
+   *   - limit: Page size (default 10)
+   *   - offset: Skip N tables (default 0)
+   * When offset=0 and status is unset or 'waiting', the default-bucket lobby table is returned first.
+   * Response includes hasMore for load-more pagination.
    */
-  fastify.get<{ Querystring: { status?: string } }>('/v1/tables', async (request, reply) => {
+  fastify.get<{ Querystring: { status?: string; limit?: string; offset?: string } }>('/v1/tables', async (request, reply) => {
     try {
-      const { status } = request.query;
-      const tables = await db.listTables(status);
+      const { status, limit: limitParam, offset: offsetParam } = request.query;
+      const limit = limitParam != null ? Math.max(1, parseInt(limitParam, 10) || 10) : 10;
+      const offset = offsetParam != null ? Math.max(0, parseInt(offsetParam, 10) || 0) : 0;
+
+      const includeLobby = (offset === 0 && (!status || status === 'waiting'));
+      let lobby: Awaited<ReturnType<typeof db.findWaitingTableInBucket>> = null;
+      if (includeLobby) {
+        lobby = await db.findWaitingTableInBucket('default');
+      }
+
+      const restLimit = includeLobby && lobby ? limit - 1 : limit;
+      const restOffset = includeLobby && lobby && offset > 0 ? offset - 1 : offset;
+      const { data: restRows, hasMore } = await db.listTablesPaginated({
+        status,
+        limit: restLimit,
+        offset: restOffset,
+        excludeTableId: lobby?.id,
+      });
 
       const result: TableListItem[] = [];
-
-      for (const table of tables) {
-        // For 'running' tables, verify there's an active runtime
-        // This prevents showing stale data after server restarts
-        if (table.status === 'running' && !tableManager.has(table.id)) {
-          // Table is marked running in DB but has no active runtime - skip it
-          continue;
-        }
-
-        const seats = await db.getSeats(table.id);
-        const tableConfig = TableConfigSchema.parse(table.config);
-
-        const seatList: Seat[] = seats.map((s) => ({
-          seatId: s.seat_id,
-          agentId: s.agent_id,
-          agentName: s.agents?.name ?? null,
-          stack: s.stack,
-          isActive: s.is_active,
-        }));
-
-        const availableSeats = seatList.filter((s) => !s.agentId).length;
-        const playerCount = seatList.filter((s) => s.agentId).length;
-
-        result.push({
-          id: table.id,
-          status: table.status,
-          config: tableConfig,
-          seats: seatList,
-          availableSeats,
-          playerCount,
-          created_at: new Date(table.created_at),
-          bucket_key: table.bucket_key ?? 'default',
-          realMoney: tableConfig.realMoney ?? false,
-        });
+      if (includeLobby && lobby) {
+        const lobbyItem = await enrichTableToListItem(lobby);
+        if (lobbyItem) result.push(lobbyItem);
+      }
+      for (const table of restRows) {
+        const item = await enrichTableToListItem(table);
+        if (item) result.push(item);
       }
 
       return reply.send({
         tables: result,
+        hasMore,
         protocol_version: PROTOCOL_VERSION,
       });
     } catch (err) {
@@ -408,6 +426,23 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
       const agentId = request.agentId!;
 
       try {
+        const table = await db.getTable(tableId);
+        if (!table) {
+          return reply.status(404).send({
+            error: {
+              code: ErrorCodes.TABLE_NOT_FOUND,
+              message: 'Table not found',
+            },
+          });
+        }
+
+        if (table.status === 'ended') {
+          return reply.status(200).send({
+            success: true,
+            message: 'Table already ended; leave is a no-op',
+          });
+        }
+
         // Check if agent is seated
         const seat = await db.getSeatByAgentId(tableId, agentId);
         if (!seat) {

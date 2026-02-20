@@ -63,19 +63,40 @@ export interface PublicTableEvent {
   created_at: string
 }
 
+export interface ListTablesOptions {
+  status?: "waiting" | "running" | "ended"
+  limit?: number
+  offset?: number
+}
+
+export interface ListTablesResult {
+  tables: PublicTableListItem[]
+  hasMore: boolean
+}
+
 /**
  * Public API client (no auth required)
  */
 export const publicApi = {
   /**
-   * List tables (public endpoint)
+   * List tables (paginated). Defaults limit=10, offset=0. Lobby table is first on page 1 when applicable.
    */
-  async listTables(status?: "waiting" | "running" | "ended"): Promise<PublicTableListItem[]> {
-    const query = status ? `?status=${status}` : ''
+  async listTables(options?: ListTablesOptions): Promise<ListTablesResult> {
+    const limit = options?.limit ?? 10
+    const offset = options?.offset ?? 0
+    const params = new URLSearchParams()
+    if (options?.status) params.set('status', options.status)
+    params.set('limit', String(limit))
+    params.set('offset', String(offset))
+    const query = `?${params.toString()}`
     const response = await fetch(`${API_URL}/v1/tables${query}`)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const data = await response.json() as { tables: Array<PublicTableListItem & { created_at: Date }> }
-    return data.tables.map(t => ({ ...t, created_at: new Date(t.created_at).toISOString() }))
+    const data = await response.json() as {
+      tables: Array<PublicTableListItem & { created_at: Date }>
+      hasMore: boolean
+    }
+    const tables = data.tables.map(t => ({ ...t, created_at: new Date(t.created_at).toISOString() }))
+    return { tables, hasMore: data.hasMore }
   },
 
   /**

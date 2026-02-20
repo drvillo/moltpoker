@@ -132,18 +132,28 @@ export const adminApi = {
   },
 
   /**
-   * List tables (uses public endpoint, but with auth for admin context)
+   * List tables (paginated, uses public endpoint). Defaults limit=10, offset=0. Lobby table is first on page 1 when applicable.
    */
-  async listTables(status?: string) {
-    const query = status ? `?status=${status}` : '';
-    const response = await apiRequest<{ tables: Array<{
-      id: string;
-      status: string;
-      config: unknown;
-      created_at: Date;
-      bucket_key?: string;
-    }> }>(`/v1/tables${query}`);
-    return response.tables.map(t => ({ ...t, created_at: new Date(t.created_at).toISOString() }));
+  async listTables(options?: { status?: string; limit?: number; offset?: number }) {
+    const limit = options?.limit ?? 10;
+    const offset = options?.offset ?? 0;
+    const params = new URLSearchParams();
+    if (options?.status) params.set('status', options.status);
+    params.set('limit', String(limit));
+    params.set('offset', String(offset));
+    const query = `?${params.toString()}`;
+    const response = await apiRequest<{
+      tables: Array<{
+        id: string;
+        status: string;
+        config: unknown;
+        created_at: Date;
+        bucket_key?: string;
+      }>;
+      hasMore: boolean;
+    }>(`/v1/tables${query}`);
+    const tables = response.tables.map(t => ({ ...t, created_at: new Date(t.created_at).toISOString() }));
+    return { tables, hasMore: response.hasMore };
   },
 
   /**
