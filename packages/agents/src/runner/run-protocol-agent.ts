@@ -9,6 +9,7 @@ import { resolveModel } from '../lib/model-resolver.js'
  */
 export async function runProtocolAgent(options: {
   server: string
+  tableId?: string
   name?: string
   model?: string
   skillUrl?: string
@@ -67,5 +68,5 @@ export async function runProtocolAgent(options: {
   console.log(`Starting ${displayName}...`)
   if (logPath) console.log(`LLM logging enabled: ${logPath}`)
   console.log('Agent running. Press Ctrl+C to stop.')
-  await agent.run(options.skillUrl, displayName)
+  await agent.run(options.skillUrl, displayName, { tableId: options.tableId })
 }

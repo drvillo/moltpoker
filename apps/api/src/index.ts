@@ -13,6 +13,9 @@ import { registerWebSocketRoutes } from './ws/connectionHandler.js';
 import { initializePaymentAdapter } from './payments/paymentService.js';
 import { startEventListener, stopEventListener } from './payments/eventListener.js';
 import { validatePaymentConfig } from './config/validation.js';
+import { registerAdminSimulationRoutes } from './routes/admin-simulations.js';
+import { registerAdminApiKeyRoutes } from './routes/admin-api-keys.js';
+import { initSimulationRunner, getSimulationRunner } from './simulation/runner.js';
 
 /**
  * Clean up stale "running" tables on startup.
@@ -71,6 +74,8 @@ async function main() {
   registerTableRoutes(app);
   registerAutoJoinRoutes(app);
   registerAdminRoutes(app);
+  registerAdminSimulationRoutes(app);
+  registerAdminApiKeyRoutes(app);
   registerSkillRoutes(app);
   registerWebSocketRoutes(app);
 
@@ -80,6 +85,11 @@ async function main() {
     process.on(signal, async () => {
       app.log.info(`Received ${signal}, shutting down gracefully...`);
       stopEventListener();
+      try {
+        await getSimulationRunner().shutdown();
+      } catch {
+        // runner may not be initialized yet
+      }
       await app.close();
       process.exit(0);
     });
@@ -123,6 +133,15 @@ async function main() {
     }
   } else {
     app.log.info('Real money mode disabled (free-to-play only)');
+  }
+
+  // Initialize simulation runner before accepting requests (crash recovery + reschedule periodic configs)
+  const runner = initSimulationRunner(app.log);
+  try {
+    await runner.initialize();
+    app.log.info('SimulationRunner initialized');
+  } catch (err) {
+    app.log.error(err, 'SimulationRunner initialization failed (non-fatal)');
   }
 
   // Start server

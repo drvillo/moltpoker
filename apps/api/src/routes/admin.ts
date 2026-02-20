@@ -52,7 +52,8 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
     const tableId = generateTableId();
 
     try {
-      await db.createTable(tableId, finalConfig as unknown as Record<string, unknown>, seed ?? null, bucketKey || 'default');
+      const resolvedBucketKey = bucketKey || 'default';
+      await db.createTable(tableId, finalConfig as unknown as Record<string, unknown>, seed ?? null, resolvedBucketKey);
       await db.createSeats(tableId, finalConfig.maxSeats);
       const seats = await db.getSeats(tableId);
       const seatList: Seat[] = seats.map((s) => ({

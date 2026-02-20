@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, type ChildProcess } from 'child_process';
 import WebSocket from 'ws';
+import { uniqueNamesGenerator, adjectives, names } from 'unique-names-generator';
 
 /** Parsed agent slot: type plus optional inline model override (e.g. llm:anthropic:claude-sonnet-4-5) */
 export interface AgentSlot {
@@ -60,6 +61,8 @@ export interface LiveSimulatorOptions {
     initialStack?: number;
     actionTimeoutMs?: number;
   };
+  /** Bucket key for table creation (defaults to "default") */
+  bucketKey?: string;
   verbose?: boolean;
   /** Service role key for admin API authentication */
   serviceRoleKey?: string;
@@ -75,11 +78,17 @@ export interface LiveSimulatorOptions {
   useAutoJoin?: boolean;
   /** Directory where per-agent logs are written */
   logDir?: string;
+  /** Additional environment variables to pass to spawned agent processes */
+  env?: Record<string, string>;
+  /** Called as soon as the table is created (admin-create mode), so run history can show table ID while running */
+  onTableCreated?: (tableId: string) => void;
 }
 
 export interface LiveSimulatorResult {
   handsPlayed: number;
   duration: number;
+  /** Table ID created by admin-create mode, null if auto-join mode */
+  tableId: string | null;
   agentResults: Array<{
     agentId: string;
     agentType: string;
@@ -162,6 +171,7 @@ export class LiveSimulator {
     return {
       handsPlayed: this.options.handsToPlay,
       duration,
+      tableId: null,
       agentResults: [],
       errors,
     };
@@ -171,92 +181,159 @@ export class LiveSimulator {
    * Run simulation using admin table creation (traditional flow)
    */
   private async runWithAdminCreate(startTime: number, errors: string[]): Promise<LiveSimulatorResult> {
-    // Create a table via admin API
-    const tableResponse = await fetch(`${this.options.serverUrl}/v1/admin/tables`, {
-      method: 'POST',
-      headers: this.getAdminHeaders(true),
-      body: JSON.stringify({
-        config: {
-          blinds: this.options.tableConfig?.blinds ?? { small: 1, big: 2 },
-          initialStack: this.options.tableConfig?.initialStack ?? 1000,
-          actionTimeoutMs: this.options.tableConfig?.actionTimeoutMs ?? 5000,
-          maxSeats: Math.min(this.options.agentCount, 9),
-        },
-      }),
-    });
-
-    if (!tableResponse.ok) {
-      const error = await tableResponse.text();
-      throw new Error(`Failed to create table: ${error}`);
+    const resolvedBucketKey = this.options.bucketKey ?? 'default';
+    const createRequestBody = {
+      config: {
+        blinds: this.options.tableConfig?.blinds ?? { small: 1, big: 2 },
+        initialStack: this.options.tableConfig?.initialStack ?? 1000,
+        actionTimeoutMs: this.options.tableConfig?.actionTimeoutMs ?? 5000,
+        maxSeats: Math.min(this.options.agentCount, 9),
+        minPlayersToStart: this.options.agentCount,
+      },
+    };
+    try {
+      const tablesResponse = await fetch(`${this.options.serverUrl}/v1/tables`, {
+        method: 'GET',
+      });
+      if (tablesResponse.ok) {
+        const payload = (await tablesResponse.json()) as {
+          tables?: Array<{ id: string; status: string; bucket_key?: string }>;
+        };
+        const waitingInBucket =
+          payload.tables?.find(
+            (t) => t.status === 'waiting' && (t.bucket_key ?? 'default') === resolvedBucketKey,
+          ) ?? null;
+        if (waitingInBucket) {
+          await fetch(
+            `${this.options.serverUrl}/v1/admin/tables/${waitingInBucket.id}/stop`,
+            {
+              method: 'POST',
+              headers: this.getAdminHeaders(false),
+            },
+          );
+        }
+      }
+    } catch {
+      // Ignore pre-cleanup failures and continue with create
     }
 
-    const table = (await tableResponse.json()) as { id: string };
-    const tableId = table.id;
+    let tableId: string | null = null;
+    try {
+      // Create a table via admin API
+      const tableResponse = await fetch(`${this.options.serverUrl}/v1/admin/tables`, {
+        method: 'POST',
+        headers: this.getAdminHeaders(true),
+        body: JSON.stringify({
+          ...createRequestBody,
+          bucket_key: resolvedBucketKey,
+        }),
+      });
 
-    if (this.options.verbose) {
-      console.log(`Created table: ${tableId}`);
+      if (!tableResponse.ok) {
+        const error = await tableResponse.text();
+        throw new Error(`Failed to create table: ${error}`);
+      }
+
+      const table = (await tableResponse.json()) as { id: string };
+      tableId = table.id;
+      this.options.onTableCreated?.(tableId);
+
+      if (this.options.verbose) {
+        console.log(`Created table: ${tableId}`);
+      }
+
+      // Spawn agent processes
+      const agentPromises: Promise<void>[] = [];
+
+      for (let i = 0; i < this.options.agentCount; i++) {
+        const slot = this.options.agentSlots[i % this.options.agentSlots.length]!;
+
+        const promise = this.spawnAgent(tableId, slot, i);
+        agentPromises.push(promise);
+
+        // Small delay between spawns to avoid race conditions
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+
+      if (this.options.verbose) {
+        console.log('Waiting for auto-start...');
+      }
+      await this.waitForTableAutoStart(tableId);
+
+      if (this.options.verbose) {
+        console.log('Table started, playing hands...');
+      }
+
+      // Wait for hands to complete
+      const handsPlayed = await this.waitForHandCompletion(tableId);
+
+      // Stop the table
+      if (this.options.verbose) {
+        console.log('Stopping table...');
+      }
+
+      await fetch(`${this.options.serverUrl}/v1/admin/tables/${tableId}/stop`, {
+        method: 'POST',
+        headers: this.getAdminHeaders(false),
+      });
+
+      // Kill agent processes
+      for (const proc of this.processes) {
+        proc.kill('SIGTERM');
+      }
+
+      const duration = Date.now() - startTime;
+
+      return {
+        handsPlayed,
+        duration,
+        tableId,
+        agentResults: [],
+        errors,
+      };
+    } catch (err) {
+      // Ensure child processes don't outlive failed runs
+      for (const proc of this.processes) {
+        proc.kill('SIGTERM');
+      }
+      this.processes = [];
+
+      if (tableId) {
+        try {
+          await fetch(`${this.options.serverUrl}/v1/admin/tables/${tableId}/stop`, {
+            method: 'POST',
+            headers: this.getAdminHeaders(false),
+          });
+        } catch {
+          // Ignore cleanup failure and rethrow original error
+        }
+      }
+      throw err;
     }
+  }
 
-    // Spawn agent processes
-    const agentPromises: Promise<void>[] = [];
-
-    for (let i = 0; i < this.options.agentCount; i++) {
-      const slot = this.options.agentSlots[i % this.options.agentSlots.length]!;
-
-      const promise = this.spawnAgent(tableId, slot, i);
-      agentPromises.push(promise);
-
-      // Small delay between spawns to avoid race conditions
+  private async waitForTableAutoStart(tableId: string): Promise<void> {
+    const timeoutMs = 45000;
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        const detailResponse = await fetch(`${this.options.serverUrl}/v1/admin/tables/${tableId}`, {
+          method: 'GET',
+          headers: this.getAdminHeaders(false),
+        });
+        if (detailResponse.ok) {
+          const tableState = (await detailResponse.json()) as {
+            status?: string;
+            seats?: Array<{ seat_id: number; agent_id: string | null }>;
+          };
+          if (tableState.status === 'running') return;
+        }
+      } catch {
+        // Ignore transient polling errors
+      }
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
-
-    // Start the table
-    if (this.options.verbose) {
-      console.log('Starting table...');
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    const startResponse = await fetch(`${this.options.serverUrl}/v1/admin/tables/${tableId}/start`, {
-      method: 'POST',
-      headers: this.getAdminHeaders(false),
-    });
-
-    if (!startResponse.ok) {
-      const error = await startResponse.text();
-      throw new Error(`Failed to start table: ${error}`);
-    }
-
-    if (this.options.verbose) {
-      console.log('Table started, playing hands...');
-    }
-
-    // Wait for hands to complete
-    const handsPlayed = await this.waitForHandCompletion(tableId);
-
-    // Stop the table
-    if (this.options.verbose) {
-      console.log('Stopping table...');
-    }
-
-    await fetch(`${this.options.serverUrl}/v1/admin/tables/${tableId}/stop`, {
-      method: 'POST',
-      headers: this.getAdminHeaders(false),
-    });
-
-    // Kill agent processes
-    for (const proc of this.processes) {
-      proc.kill('SIGTERM');
-    }
-
-    const duration = Date.now() - startTime;
-
-    return {
-      handsPlayed,
-      duration,
-      agentResults: [], // Would need to track this properly
-      errors,
-    };
+    throw new Error(`Timed out waiting for table auto-start: ${tableId}`);
   }
 
   /**
@@ -314,6 +391,14 @@ export class LiveSimulator {
       this.options.agentBinPath ??
       path.join(findRepoRoot(__dirname), 'packages', 'agents', 'dist', 'cli.js');
 
+    const baseName = uniqueNamesGenerator({
+      dictionaries: [adjectives, names],
+      separator: ' ',
+      length: 2,
+      style: 'capital',
+    });
+    const displayName = `${baseName} (${agentType})`;
+
     const args = [
       agentBin,
       '--type',
@@ -321,7 +406,7 @@ export class LiveSimulator {
       '--server',
       this.options.serverUrl,
       '--name',
-      `${agentType}-${index}`,
+      displayName,
     ];
 
     if (tableId) {
@@ -375,6 +460,7 @@ export class LiveSimulator {
       cwd: process.cwd(),
       env: {
         ...process.env,
+        ...this.options.env,
         NODE_OPTIONS: sanitizeNodeOptionsForChild(process.env.NODE_OPTIONS),
       },
     });

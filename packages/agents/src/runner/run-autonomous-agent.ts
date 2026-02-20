@@ -10,6 +10,7 @@ import { resolveModel } from '../lib/model-resolver.js'
  */
 export async function runAutonomousAgent(options: {
   server: string
+  tableId?: string
   name?: string
   model?: string
   skillUrl?: string
@@ -124,11 +125,14 @@ export async function runAutonomousAgent(options: {
   // Create the actual agent with the onStep callback
   const agent = new AutonomousAgent({ model, temperature: 0.3, logPath, onStep })
 
+  const joinInstruction = options.tableId
+    ? `join the specific table ${options.tableId} using POST ${options.server}/v1/tables/${options.tableId}/join (do not use auto-join), and play.`
+    : 'use the auto-join endpoint to join a game, and play.'
   const task =
     `First, fetch the skill document from ${options.skillUrl} using fetch_document with documentRole: "skill" to learn how to interact with this platform. ` +
     `The server base URL is ${options.server}. ` +
     `After reading the skill document, register as an agent${options.name ? ` named "${options.name}"` : ` named "${displayName}"`}, ` +
-    `use the auto-join endpoint to join a game, and play. Continue playing until the table ends or you are told to stop.`
+    `${joinInstruction} Continue playing until the table ends or you are told to stop.`
 
   // Graceful shutdown
   process.on('SIGINT', () => {

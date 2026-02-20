@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { writeFileSync, mkdtempSync, rmSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -227,6 +227,60 @@ describe('LiveSimulator construction', () => {
       handsToPlay: 1,
     })
     expect(() => simulator.stop()).not.toThrow()
+  })
+})
+
+describe('LiveSimulator admin-create payload', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('sets minPlayersToStart equal to agentCount', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ tables: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({ id: 'tbl_test' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+      })
+
+    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(LiveSimulator.prototype as any, 'spawnAgent').mockResolvedValue(undefined)
+    vi.spyOn(LiveSimulator.prototype as any, 'waitForTableAutoStart').mockResolvedValue(undefined)
+    vi.spyOn(LiveSimulator.prototype as any, 'waitForHandCompletion').mockResolvedValue(1)
+
+    const simulator = new LiveSimulator({
+      serverUrl: 'http://localhost:9000',
+      agentCount: 4,
+      agentSlots: [{ type: 'random' }],
+      handsToPlay: 1,
+      useAutoJoin: false,
+    })
+
+    await simulator.run()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:9000/v1/admin/tables',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    )
+
+    const createCall = fetchMock.mock.calls.find((call) => call[0] === 'http://localhost:9000/v1/admin/tables')
+    const requestBody = JSON.parse(String(createCall?.[1]?.body))
+    expect(requestBody.config.maxSeats).toBe(4)
+    expect(requestBody.config.minPlayersToStart).toBe(4)
   })
 })
 

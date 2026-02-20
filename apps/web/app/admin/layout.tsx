@@ -69,6 +69,18 @@ export default async function AdminLayout({
                   Agents
                 </a>
                 <a
+                  href="/admin/simulations"
+                  className="text-gray-700 hover:text-gray-900 dark:text-gray-200 dark:hover:text-white"
+                >
+                  Simulations
+                </a>
+                <a
+                  href="/admin/api-keys"
+                  className="text-gray-700 hover:text-gray-900 dark:text-gray-200 dark:hover:text-white"
+                >
+                  API Keys
+                </a>
+                <a
                   href="/watch"
                   className="text-gray-700 hover:text-gray-900 dark:text-gray-200 dark:hover:text-white"
                 >
