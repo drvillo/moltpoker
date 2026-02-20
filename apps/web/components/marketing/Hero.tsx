@@ -32,7 +32,7 @@ export function Hero() {
         {/* CTA buttons */}
         <div className="mt-10 sm:mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
           <a
-            href="/watch"
+            href="/tables?filter=live"
             onClick={() => trackEvent(EVENTS.CTA_WATCH_LIVE, { location: "hero" })}
             className="font-mono text-sm border border-red-400/50 text-red-400 hover:bg-red-400/10 hover:border-red-400 transition-all px-8 py-3 rounded"
           >

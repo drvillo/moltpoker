@@ -4,6 +4,7 @@ import type {
   GameStatePayload,
   HandCompletePayload,
   PlayerState,
+  StreetDealtPayload,
   WelcomePayload,
 } from '@moltpoker/shared'
 import { describe, expect, it } from 'vitest'
@@ -252,6 +253,43 @@ describe('game_state conversion', () => {
     })
     const result = formatMessage('game_state', state) as Record<string, unknown>
     expect(result.last).toEqual({ seat: 0, kind: 'raiseTo', amount: 50 })
+  })
+})
+
+// ─── street_dealt Conversion ─────────────────────────────────────────────────
+
+describe('street_dealt conversion', () => {
+  it('produces type, hand, street, cards with 2-char card strings', () => {
+    const payload: StreetDealtPayload = {
+      handNumber: 3,
+      street: 'flop',
+      cards: [card('Qs'), card('Jd'), card('Th')],
+    }
+    const result = formatMessage('street_dealt', payload) as Record<string, unknown>
+    expect(result.type).toBe('street_dealt')
+    expect(result.hand).toBe(3)
+    expect(result.street).toBe('flop')
+    expect(result.cards).toEqual(['Qs', 'Jd', 'Th'])
+  })
+
+  it('handles turn and river', () => {
+    const turnPayload: StreetDealtPayload = {
+      handNumber: 1,
+      street: 'turn',
+      cards: [card('Ac')],
+    }
+    const turnResult = formatMessage('street_dealt', turnPayload) as Record<string, unknown>
+    expect(turnResult.street).toBe('turn')
+    expect(turnResult.cards).toEqual(['Ac'])
+
+    const riverPayload: StreetDealtPayload = {
+      handNumber: 1,
+      street: 'river',
+      cards: [card('2h')],
+    }
+    const riverResult = formatMessage('street_dealt', riverPayload) as Record<string, unknown>
+    expect(riverResult.street).toBe('river')
+    expect(riverResult.cards).toEqual(['2h'])
   })
 })
 

@@ -187,6 +187,15 @@ export const TableStatusPayloadSchema = z.discriminatedUnion('status', [
 ]);
 
 /**
+ * Schema for street_dealt message payload
+ */
+export const StreetDealtPayloadSchema = z.object({
+  handNumber: z.number().int(),
+  street: z.enum(['flop', 'turn', 'river']),
+  cards: z.array(CardSchema),
+});
+
+/**
  * Schema for WebSocket message types
  */
 export const WsMessageTypeSchema = z.enum([
@@ -196,6 +205,7 @@ export const WsMessageTypeSchema = z.enum([
   'ack',
   'error',
   'hand_complete',
+  'street_dealt',
   'ping',
   'pong',
   'player_joined',

@@ -47,6 +47,7 @@ export interface ActionResult {
   success: boolean;
   error?: string;
   errorCode?: string;
+  streetsDealt?: Array<{ street: 'flop' | 'turn' | 'river'; cards: Card[] }>;
 }
 
 /**
@@ -75,6 +76,8 @@ export class TableRuntime {
   private currentTurnToken: string = '';
   /** Map of processed turn tokens → { seq, success } for replay/idempotency */
   private processedTurnTokens: Map<string, { seq: number; success: boolean }> = new Map();
+  /** Streets dealt during the current applyAction (for API event logging) */
+  private streetsDealtThisAction: Array<{ street: 'flop' | 'turn' | 'river'; cards: Card[] }> = [];
 
   constructor(config: TableRuntimeConfig) {
     this.config = config;
@@ -452,10 +455,17 @@ export class TableRuntime {
 
     this.seq++;
 
+    // Clear any previous street-dealt capture from nested calls
+    this.streetsDealtThisAction = [];
+
     // Advance game state (this may generate a new turn token for the next actor)
     this.advanceGame();
 
-    return { success: true };
+    const streetsDealt =
+      this.streetsDealtThisAction.length > 0 ? [...this.streetsDealtThisAction] : undefined;
+    this.streetsDealtThisAction = [];
+
+    return { success: true, ...(streetsDealt && { streetsDealt }) };
   }
 
   /**
@@ -557,18 +567,27 @@ export class TableRuntime {
     this.collectBets();
 
     switch (this.phase) {
-      case 'preflop':
+      case 'preflop': {
         this.phase = 'flop';
-        this.communityCards.push(this.deck.pop()!, this.deck.pop()!, this.deck.pop()!);
+        const flopCards = [this.deck.pop()!, this.deck.pop()!, this.deck.pop()!];
+        this.communityCards.push(...flopCards);
+        this.streetsDealtThisAction.push({ street: 'flop', cards: flopCards });
         break;
-      case 'flop':
+      }
+      case 'flop': {
         this.phase = 'turn';
-        this.communityCards.push(this.deck.pop()!);
+        const turnCard = this.deck.pop()!;
+        this.communityCards.push(turnCard);
+        this.streetsDealtThisAction.push({ street: 'turn', cards: [turnCard] });
         break;
-      case 'turn':
+      }
+      case 'turn': {
         this.phase = 'river';
-        this.communityCards.push(this.deck.pop()!);
+        const riverCard = this.deck.pop()!;
+        this.communityCards.push(riverCard);
+        this.streetsDealtThisAction.push({ street: 'river', cards: [riverCard] });
         break;
+      }
       case 'river':
         this.resolveShowdown();
         return;
@@ -594,14 +613,20 @@ export class TableRuntime {
 
     while (this.communityCards.length < 5) {
       if (this.communityCards.length === 0) {
-        this.communityCards.push(this.deck.pop()!, this.deck.pop()!, this.deck.pop()!);
+        const flopCards = [this.deck.pop()!, this.deck.pop()!, this.deck.pop()!];
+        this.communityCards.push(...flopCards);
         this.phase = 'flop';
+        this.streetsDealtThisAction.push({ street: 'flop', cards: flopCards });
       } else if (this.communityCards.length === 3) {
-        this.communityCards.push(this.deck.pop()!);
+        const turnCard = this.deck.pop()!;
+        this.communityCards.push(turnCard);
         this.phase = 'turn';
+        this.streetsDealtThisAction.push({ street: 'turn', cards: [turnCard] });
       } else if (this.communityCards.length === 4) {
-        this.communityCards.push(this.deck.pop()!);
+        const riverCard = this.deck.pop()!;
+        this.communityCards.push(riverCard);
         this.phase = 'river';
+        this.streetsDealtThisAction.push({ street: 'river', cards: [riverCard] });
       }
     }
 

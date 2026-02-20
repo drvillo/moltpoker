@@ -9,9 +9,10 @@ import {
 
 import * as db from '../db.js';
 import { config } from '../config.js';
+import { endTable } from '../table/endTable.js';
 import { tableManager } from '../table/manager.js';
 import { startTableRuntime } from '../table/startTable.js';
-import { clearScheduledNextHand, scheduleActionTimeout } from '../table/timeoutHandler.js';
+import { scheduleActionTimeout } from '../table/timeoutHandler.js';
 import { generateTableId } from '../utils/crypto.js';
 import { broadcastManager } from '../ws/broadcastManager.js';
 import { adminAuthMiddleware } from '../auth/adminAuth.js';
@@ -167,57 +168,7 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
           });
         }
 
-        // Get managed table
-        const managedTable = tableManager.get(tableId);
-
-        if (managedTable) {
-          // Get final stacks
-          const players = managedTable.runtime.getAllPlayers();
-          const finalStacks = players.map((p) => ({
-            seatId: p.seatId,
-            agentId: p.agentId,
-            stack: p.stack,
-          }));
-
-          // Log table ended event
-          await managedTable.eventLogger.log('TABLE_ENDED', {
-            reason: 'admin_stopped',
-            finalStacks,
-          });
-
-          broadcastManager.broadcastTableStatus(
-            tableId,
-            {
-              status: 'ended',
-              reason: 'admin_stopped',
-              final_stacks: finalStacks.map((stack) => ({
-                seat_id: stack.seatId,
-                agent_id: stack.agentId,
-                stack: stack.stack,
-              })),
-            },
-            { includeObservers: true }
-          );
-
-          // Disconnect all WebSocket connections
-          broadcastManager.disconnectAll(tableId);
-
-          // Clear scheduled next-hand
-          clearScheduledNextHand(tableId);
-
-          // Destroy runtime
-          tableManager.destroy(tableId);
-        } else {
-          broadcastManager.broadcastTableStatus(
-            tableId,
-            { status: 'ended', reason: 'admin_stopped' },
-            { includeObservers: true }
-          );
-          broadcastManager.disconnectAll(tableId);
-        }
-
-        // Update status
-        await db.updateTableStatus(tableId, 'ended');
+        await endTable({ tableId, reason: 'admin_stopped', source: 'admin' });
 
         return reply.status(200).send({
           success: true,
@@ -234,6 +185,43 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
       }
     }
   );
+
+  /**
+   * POST /v1/admin/tables/backfill-final-stacks - One-shot backfill of seat stacks for ended tables
+   * Reads TABLE_ENDED event for each ended table and persists finalStacks to seats. Idempotent.
+   */
+  fastify.post('/v1/admin/tables/backfill-final-stacks', async (_request, reply) => {
+    try {
+      const endedTables = await db.listTables('ended');
+      const backfilled: string[] = [];
+      for (const table of endedTables) {
+        const event = await db.getLatestTableEndedEvent(table.id);
+        const finalStacks = event?.payload?.finalStacks as
+          | Array<{ seatId: number; agentId: string; stack: number }>
+          | undefined;
+        if (finalStacks?.length) {
+          await db.updateSeatStacksBatch(
+            table.id,
+            finalStacks.map((s) => ({ seatId: s.seatId, stack: s.stack }))
+          );
+          backfilled.push(table.id);
+        }
+      }
+      return reply.status(200).send({
+        success: true,
+        backfilled: backfilled.length,
+        tableIds: backfilled,
+      });
+    } catch (err) {
+      fastify.log.error(err, 'Backfill final stacks failed');
+      return reply.status(500).send({
+        error: {
+          code: ErrorCodes.INTERNAL_ERROR,
+          message: 'Backfill failed',
+        },
+      });
+    }
+  });
 
   /**
    * POST /v1/admin/tables/:tableId/next-hand - Start next hand

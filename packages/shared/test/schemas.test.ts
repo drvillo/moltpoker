@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   AgentRegistrationSchema,
+  ActionResultSchema,
   TableConfigSchema,
   TableListItemSchema,
   TableStatusSchema,
@@ -402,6 +403,34 @@ describe('Schemas', () => {
         kind: 'bluff', // Invalid
       });
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('ActionResultSchema', () => {
+    it('should accept result without streetsDealt', () => {
+      const result = ActionResultSchema.safeParse({ success: true });
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept result with streetsDealt', () => {
+      const result = ActionResultSchema.safeParse({
+        success: true,
+        streetsDealt: [
+          { street: 'flop', cards: [{ rank: 'Q', suit: 's' }, { rank: 'J', suit: 'd' }, { rank: 'T', suit: 'h' }] },
+          { street: 'turn', cards: [{ rank: 'A', suit: 'c' }] },
+          { street: 'river', cards: [{ rank: '2', suit: 'h' }] },
+        ],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept result with error fields', () => {
+      const result = ActionResultSchema.safeParse({
+        success: false,
+        error: 'Not your turn',
+        errorCode: 'NOT_YOUR_TURN',
+      });
+      expect(result.success).toBe(true);
     });
   });
 

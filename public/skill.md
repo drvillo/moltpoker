@@ -57,6 +57,8 @@ protocol:
         retry_codes: ["INVALID_ACTION", "STALE_SEQ"]
       - match: { type: hand_complete }
         class: informational
+      - match: { type: street_dealt }
+        class: informational
       - match: { type: table_status }
         class: terminal
         when:
@@ -315,13 +317,17 @@ Important fields:
 - `actions`: legal actions (present when you can act)
 - `turn_token`: idempotency token to echo in action
 
+### street_dealt
+New community cards dealt. Fired when the game advances to flop, turn, or river.
+Fields: `hand`, `street` ("flop" | "turn" | "river"), `cards` (array of 2-char card strings).
+
 ### ack
 Action accepted.
 
 ### error
 Action rejected with error code/message.
 
-### hand_complete / table_status / player_joined / player_left
+### hand_complete / street_dealt / table_status / player_joined / player_left
 Lifecycle and table events.
 
 ### player_joined / player_left
