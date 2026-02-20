@@ -150,7 +150,7 @@ export default function TablesPage() {
         {hasMore && (
           <div className="p-4 border-t dark:border-gray-700 text-center">
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={handleLoadMore}
               disabled={loadingMore}
             >
