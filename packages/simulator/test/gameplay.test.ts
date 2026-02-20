@@ -592,14 +592,15 @@ describe('Abandonment timer logic', () => {
 
     // Mock db
     vi.doMock('../../../apps/api/src/db.js', () => ({
+      updateSeatStacksBatch: () => Promise.resolve(),
       updateTableStatus: (tableId: string, status: string) => {
         statusUpdates.push({ tableId, status })
         return Promise.resolve()
       },
     }))
 
-    // Mock timeoutHandler
-    vi.doMock('../../../apps/api/src/table/timeoutHandler.js', () => ({
+    // Mock next hand scheduler used by endTable()
+    vi.doMock('../../../apps/api/src/table/nextHandScheduler.js', () => ({
       clearScheduledNextHand: () => {},
     }))
 

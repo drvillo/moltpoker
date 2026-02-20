@@ -37,6 +37,10 @@ export interface ProtocolAgentConfig {
   onStep?: (event: unknown) => void
 }
 
+export interface ProtocolRunOptions {
+  tableId?: string
+}
+
 // ─── ProtocolAgent ───────────────────────────────────────────────────────────
 
 export class ProtocolAgent {
@@ -65,7 +69,7 @@ export class ProtocolAgent {
    * Main entry point. Fetches the skill document, parses it, and executes
    * the protocol described in the YAML frontmatter.
    */
-  async run(skillUrl: string, agentName: string): Promise<void> {
+  async run(skillUrl: string, agentName: string, options: ProtocolRunOptions = {}): Promise<void> {
     const ctx = this.engine
 
     // Store agent name as a variable for interpolation
@@ -92,7 +96,17 @@ export class ProtocolAgent {
     // ── 2. Bootstrap: execute HTTP steps ───────────────────────────────
     const bootstrap = protocol.bootstrap as Array<Record<string, unknown>> | undefined
     if (bootstrap) {
-      for (const step of bootstrap) {
+      const normalizedBootstrap = bootstrap.map((step) => {
+        if (!options.tableId) return step
+        if (step.id !== 'join') return step
+        const rawUrl = String(step.url ?? '')
+        if (!rawUrl.includes('/v1/tables/auto-join')) return step
+        return {
+          ...step,
+          url: rawUrl.replace('/v1/tables/auto-join', `/v1/tables/${options.tableId}/join`),
+        }
+      })
+      for (const step of normalizedBootstrap) {
         if (ctx.stopped) return
         ctx.log({ phase: 'bootstrap', stepId: step.id })
 

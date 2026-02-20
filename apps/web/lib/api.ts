@@ -230,3 +230,158 @@ export const adminApi = {
     );
   },
 };
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface AgentSlotConfig {
+  type: string
+  model?: string
+}
+
+export interface SimTableConfig {
+  blinds: { small: number; big: number }
+  initialStack: number
+  actionTimeoutMs: number
+}
+
+export interface SimulationConfig {
+  id: string
+  name: string
+  status: 'active' | 'paused'
+  schedule_type: 'one_off' | 'periodic'
+  interval_minutes: number | null
+  cooldown_minutes: number
+  max_hands: number
+  agent_count: number
+  agent_slots: AgentSlotConfig[]
+  table_config: SimTableConfig
+  bucket_key: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SimulationRun {
+  id: string
+  config_id: string
+  status: 'running' | 'completed' | 'failed'
+  table_id: string | null
+  hands_played: number
+  log_dir: string | null
+  error: string | null
+  started_at: string
+  completed_at: string | null
+}
+
+export interface ProviderApiKeyMasked {
+  id: string
+  provider: string
+  label: string
+  masked_key: string
+  created_at: string
+}
+
+export interface SimulationConfigWithRuns extends SimulationConfig {
+  runs: SimulationRun[]
+  active_run_id: string | null
+}
+
+export interface SimulationConfigWithLatestRun extends SimulationConfig {
+  latest_run: {
+    id: string
+    status: 'running' | 'completed' | 'failed'
+    hands_played: number
+    started_at: string
+    completed_at: string | null
+  } | null
+  is_running: boolean
+}
+
+export interface AgentType {
+  type: string
+  requires_model: boolean
+}
+
+export interface RunLogFile {
+  name: string
+  entries: unknown[]
+}
+
+// ─── Simulation API client ────────────────────────────────────────────────────
+
+export const simulationApi = {
+  async listSimulations() {
+    return apiRequest<{ simulations: SimulationConfigWithLatestRun[] }>('/v1/admin/simulations')
+  },
+
+  async createSimulation(data: {
+    name: string
+    agent_count: number
+    agent_slots: AgentSlotConfig[]
+    table_config: SimTableConfig
+    max_hands: number
+    schedule_type: 'one_off' | 'periodic'
+    interval_minutes?: number
+    cooldown_minutes?: number
+  }) {
+    return apiRequest<SimulationConfig>('/v1/admin/simulations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async getSimulation(id: string) {
+    return apiRequest<SimulationConfigWithRuns>(`/v1/admin/simulations/${id}`)
+  },
+
+  async updateSimulation(id: string, updates: Partial<Pick<SimulationConfig, 'name' | 'status' | 'interval_minutes' | 'cooldown_minutes' | 'max_hands' | 'schedule_type'>>) {
+    return apiRequest<SimulationConfig>(`/v1/admin/simulations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    })
+  },
+
+  async deleteSimulation(id: string) {
+    return apiRequest<{ success: boolean }>(`/v1/admin/simulations/${id}`, { method: 'DELETE' })
+  },
+
+  async startSimulation(id: string) {
+    return apiRequest<{ success: boolean; run_id: string }>(`/v1/admin/simulations/${id}/start`, { method: 'POST' })
+  },
+
+  async stopSimulation(id: string) {
+    return apiRequest<{ success: boolean }>(`/v1/admin/simulations/${id}/stop`, { method: 'POST' })
+  },
+
+  async emergencyStop() {
+    return apiRequest<{ success: boolean; message: string }>('/v1/admin/simulations/emergency-stop', { method: 'POST' })
+  },
+
+  async getAgentTypes() {
+    return apiRequest<{ agent_types: AgentType[] }>('/v1/admin/simulations/agent-types')
+  },
+
+  async getRunLogs(runId: string) {
+    return apiRequest<{ run_id: string; log_dir: string; files: RunLogFile[] }>(
+      `/v1/admin/simulations/runs/${runId}/logs`
+    )
+  },
+}
+
+// ─── API Keys client ──────────────────────────────────────────────────────────
+
+export const apiKeysApi = {
+  async listKeys() {
+    return apiRequest<{ keys: ProviderApiKeyMasked[] }>('/v1/admin/api-keys')
+  },
+
+  async addKey(data: { provider: string; label: string; api_key: string }) {
+    return apiRequest<ProviderApiKeyMasked>('/v1/admin/api-keys', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteKey(id: string) {
+    return apiRequest<{ success: boolean }>(`/v1/admin/api-keys/${id}`, { method: 'DELETE' })
+  },
+}
