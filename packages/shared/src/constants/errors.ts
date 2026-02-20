@@ -56,6 +56,30 @@ export const ErrorCodes = {
 
   /** Invalid API key */
   INVALID_API_KEY: 'INVALID_API_KEY',
+
+  /** Real money tables are not enabled */
+  REAL_MONEY_DISABLED: 'REAL_MONEY_DISABLED',
+
+  /** Deposit required to join real money table */
+  DEPOSIT_REQUIRED: 'DEPOSIT_REQUIRED',
+
+  /** Deposit not confirmed yet */
+  DEPOSIT_NOT_CONFIRMED: 'DEPOSIT_NOT_CONFIRMED',
+
+  /** Deposit has expired */
+  DEPOSIT_EXPIRED: 'DEPOSIT_EXPIRED',
+
+  /** Deposit amount is invalid */
+  INVALID_DEPOSIT_AMOUNT: 'INVALID_DEPOSIT_AMOUNT',
+
+  /** Payment system unavailable */
+  PAYMENT_SYSTEM_UNAVAILABLE: 'PAYMENT_SYSTEM_UNAVAILABLE',
+
+  /** Payout failed */
+  PAYOUT_FAILED: 'PAYOUT_FAILED',
+
+  /** Refund failed */
+  REFUND_FAILED: 'REFUND_FAILED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
@@ -85,4 +109,12 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCodes.RATE_LIMIT_EXCEEDED]: 'Rate limit exceeded. Please slow down your requests.',
   [ErrorCodes.AGENT_NOT_FOUND]: 'The specified agent was not found.',
   [ErrorCodes.INVALID_API_KEY]: 'The API key provided is invalid.',
+  [ErrorCodes.REAL_MONEY_DISABLED]: 'Real money tables are not enabled on this server.',
+  [ErrorCodes.DEPOSIT_REQUIRED]: 'A deposit is required to join this real money table.',
+  [ErrorCodes.DEPOSIT_NOT_CONFIRMED]: 'Your deposit has not been confirmed yet.',
+  [ErrorCodes.DEPOSIT_EXPIRED]: 'Your deposit request has expired.',
+  [ErrorCodes.INVALID_DEPOSIT_AMOUNT]: 'The deposit amount is invalid.',
+  [ErrorCodes.PAYMENT_SYSTEM_UNAVAILABLE]: 'The payment system is currently unavailable.',
+  [ErrorCodes.PAYOUT_FAILED]: 'Payout processing failed.',
+  [ErrorCodes.REFUND_FAILED]: 'Refund processing failed.',
 };

@@ -32,6 +32,7 @@ import {
   AutoJoinResponseSchema,
 } from '../schemas/autoJoin.js';
 import {
+  DepositInstructionsSchema,
   JoinRequestSchema,
   JoinResponseSchema,
   LeaveRequestSchema,
@@ -53,10 +54,12 @@ import {
   ClientActionMessageSchema,
   ClientMessageSchema,
   ClientPingMessageSchema,
+  DepositConfirmedPayloadSchema,
   ErrorPayloadSchema,
   GameStatePayloadSchema,
   HandCompletePayloadSchema,
   HandResultSchema,
+  PayoutInitiatedPayloadSchema,
   PingPayloadSchema,
   PlayerStateSchema,
   PongPayloadSchema,
@@ -89,6 +92,7 @@ export type JoinRequest = z.infer<typeof JoinRequestSchema>;
 export type JoinResponse = z.infer<typeof JoinResponseSchema>;
 export type LeaveRequest = z.infer<typeof LeaveRequestSchema>;
 export type LeaveResponse = z.infer<typeof LeaveResponseSchema>;
+export type DepositInstructions = z.infer<typeof DepositInstructionsSchema>;
 
 // Auto-join types
 export type AutoJoinRequest = z.infer<typeof AutoJoinRequestSchema>;
@@ -119,6 +123,8 @@ export type WsMessageEnvelope = z.infer<typeof WsMessageEnvelopeSchema>;
 export type ClientActionMessage = z.infer<typeof ClientActionMessageSchema>;
 export type ClientPingMessage = z.infer<typeof ClientPingMessageSchema>;
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
+export type DepositConfirmedPayload = z.infer<typeof DepositConfirmedPayloadSchema>;
+export type PayoutInitiatedPayload = z.infer<typeof PayoutInitiatedPayloadSchema>;
 
 // Event types
 export type EventType = z.infer<typeof EventTypeSchema>;

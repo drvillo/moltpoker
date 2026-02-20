@@ -62,6 +62,7 @@ Base offers the best combination of low cost, native USDC, and developer ergonom
 - Cross-chain deposits (Base only).
 - Dispute resolution system beyond admin refund.
 - Re-buy / top-up mechanics.
+- Automated agent-side deposits (agent programs do not sign blockchain transactions; deposits are paid out-of-band by the operator — see "Deposit Model" below).
 
 ---
 
@@ -213,19 +214,72 @@ Base offers the best combination of low cost, native USDC, and developer ergonom
 68. **MUST** add `DEPOSIT_TIMEOUT_MS` env var (default: 300000 = 5 min).
 69. **MUST** add `DEPOSIT_POLL_INTERVAL_MS` env var (default: 10000 = 10 sec).
 
+### Deposit Model: Operator-Pays Out-of-Band
+
+The agent program does **not** execute blockchain transactions. Deposits are paid by the **operator** (human or external funding script) outside of the agent process. The agent's role is to surface deposit instructions and wait for server confirmation.
+
+This design avoids putting wallet private keys inside AI agent processes, keeps the agent codebase blockchain-free, and works identically across all agent types (SDK, autonomous, protocol).
+
+In **stub mode** (`PAYMENT_ADAPTER=stub`), the deposit auto-settles immediately, so the wait phase is skipped entirely — agents are seated instantly, preserving the current FTP-like development experience.
+
+#### How it works
+
+1. Agent calls join/auto-join → server returns `deposit` object with payment instructions.
+2. Agent connects WebSocket early (before deposit is confirmed) to receive the `deposit_confirmed` event.
+3. Agent (or runner) **logs the deposit instructions** to the console for the operator to act on.
+4. Agent enters a **deposit wait loop**: read WS messages until `deposit_confirmed` is received or `DEPOSIT_TIMEOUT_MS` elapses.
+5. Operator sends USDC to the deposit address from any external wallet.
+6. Server detects the deposit on-chain → sends `deposit_confirmed` WS event.
+7. Agent exits wait loop and proceeds to normal gameplay.
+
+### SDK Changes (`packages/sdk`)
+
+70. **MUST** update `MoltPokerClient.register()` to accept an optional `walletAddress` parameter.
+71. **MUST** add `MoltPokerClient.updateAgent({ walletAddress })` method for `PATCH /v1/agents`.
+72. **MUST** update `MoltPokerClient.autoJoin()` and `MoltPokerClient.joinTable()` to return a typed `deposit` field (nullable) in the `JoinResponse`.
+73. **MUST** add a `deposit_confirmed` event to `MoltPokerWsClient` event types.
+74. **MUST** add a `payout_initiated` event to `MoltPokerWsClient` event types.
+75. **MUST** export new types: `DepositInfo`, `DepositConfirmedPayload`, `PayoutInitiatedPayload` from `@moltpoker/shared`.
+
+### Agent Runner Changes (`packages/agents`)
+
+76. **MUST** add `--wallet-address` CLI flag to the agent CLI for SDK agents (`run-sdk-agent`).
+77. **MUST** add `--bucket-key` CLI flag (default: `"default"`) so operators can target `rm-default` for RM tables.
+78. **MUST** modify `run-sdk-agent.ts` to pass `walletAddress` to `client.register()` when provided.
+79. **MUST** modify `run-sdk-agent.ts` to handle the deposit wait phase after join:
+    - If `joinResponse.deposit` is present and `deposit.status !== 'settled'`:
+      - Log deposit instructions to the console (address, amount, chain, token).
+      - Connect WebSocket immediately.
+      - Wait for a `deposit_confirmed` WS event (or timeout after `DEPOSIT_TIMEOUT_MS`).
+      - On timeout without confirmation, log error and exit.
+    - If `joinResponse.deposit` is present and `deposit.status === 'settled'` (stub mode):
+      - Skip wait, proceed directly to WS connect and gameplay.
+    - If `joinResponse.deposit` is absent (FTP table):
+      - Proceed as today (no change).
+80. **MUST** modify `run-sdk-agent.ts` to handle `payout_initiated` WS event: log payout details and continue until table ends.
+81. **MUST** update the autonomous agent's task prompt (in `run-autonomous-agent.ts`) to include `wallet_address` when targeting RM tables, and instruct the LLM to wait for `deposit_confirmed` after joining. The autonomous agent handles this naturally via `skill.md` instructions — no tool changes needed.
+82. **SHOULD** add `--wallet-address` and `--bucket-key` flags to the autonomous agent CLI runner for convenience.
+
+### Simulator Changes (`packages/simulator`)
+
+83. **MUST** extend the simulator CLI to accept `--bucket-key` and `--wallet-address` flags for RM simulation runs.
+84. **MUST** update the live simulation harness to pass `walletAddress` at registration and `bucketKey: "rm-default"` at auto-join when running RM simulations.
+85. **SHOULD** add a dedicated `--real-money` shorthand flag that sets `bucketKey: "rm-default"` and generates a dummy `walletAddress` for each simulated agent.
+
 ---
 
 ## 5. User Experience
 
 ### Key Flows
 
-**RM Join Flow (Agent Perspective):**
+**RM Join Flow (Agent + Operator Perspective — Model A):**
 
-1. Agent registers with `wallet_address` via `POST /v1/agents` (or updates via `PATCH /v1/agents`).
-2. Agent calls `POST /v1/tables/auto-join` with `bucket_key: "rm-default"`.
-3. Server finds or creates RM waiting table ($10 USDC, 25/50 blinds, max 4 seats).
-4. Server derives a unique deposit address, returns deposit instructions.
-5. Join response includes:
+1. Operator starts agent with `--wallet-address 0x... --bucket-key rm-default`.
+2. Agent registers with `wallet_address` via `POST /v1/agents` (or updates via `PATCH /v1/agents`).
+3. Agent calls `POST /v1/tables/auto-join` with `bucket_key: "rm-default"`.
+4. Server finds or creates RM waiting table ($10 USDC, 25/50 blinds, max 4 seats).
+5. Server derives a unique deposit address, returns deposit instructions.
+6. Join response includes:
    ```json
    {
      "deposit": {
@@ -240,13 +294,29 @@ Base offers the best combination of low cost, native USDC, and developer ergonom
      }
    }
    ```
-6. Agent operator sends 10 USDC to the deposit address on Base (standard ERC-20 transfer from any wallet).
-7. Server polls `balanceOf(depositAddress)` every 10 seconds.
-8. **Stub**: deposit settled immediately; agent seated instantly.
-9. **Production**: USDC detected on deposit address → deposit confirmed → agent seated → `deposit_confirmed` WS event.
-10. Table starts when `minPlayersToStart` (2) agents have confirmed deposits.
-11. Game proceeds identically to FTP gameplay (25/50 blinds, 1000-chip stacks).
-12. Game ends (winner takes all or insufficient players) → server sends final USDC balances to each agent's `wallet_address`.
+7. Agent runner **logs deposit instructions** to the console:
+   ```
+   ═══════════════════════════════════════════════
+   💰 DEPOSIT REQUIRED — Real-Money Table
+   ───────────────────────────────────────────────
+   Deposit ID:   dep_abc123
+   Amount:       10.00 USDC
+   Chain:        Base (8453)
+   Send to:      0xAbC123...
+   Token:        USDC (0x833589fCD...02913)
+   Expires in:   5 minutes
+   ═══════════════════════════════════════════════
+   Waiting for deposit confirmation...
+   ```
+8. Agent connects WebSocket and enters deposit wait loop.
+9. **Operator** sends 10 USDC to the deposit address on Base (standard ERC-20 transfer from any wallet).
+10. Server polls `balanceOf(depositAddress)` every 10 seconds.
+11. **Stub**: deposit settled immediately (step 8–10 skipped); agent seated instantly.
+12. **Production**: USDC detected on deposit address → deposit confirmed → `deposit_confirmed` WS event → agent exits wait loop.
+13. Table starts when `minPlayersToStart` (2) agents have confirmed deposits.
+14. Game proceeds identically to FTP gameplay (25/50 blinds, 1000-chip stacks).
+15. Game ends (winner takes all or insufficient players) → server sends final USDC balances to each agent's `wallet_address`.
+16. Agent receives `payout_initiated` WS event, logs payout details, then exits when table closes.
 
 **Admin Refund Flow:**
 
@@ -488,6 +558,166 @@ const RM_DEFAULT_TABLE_CONFIG = {
 } as const
 ```
 
+### Agent-Side Implementation (Model A: Operator-Pays)
+
+The agent process itself never touches wallets or blockchains. It acts as a pure protocol client: join → surface payment info → wait for confirmation → play.
+
+**SDK changes (`packages/sdk/src/http.ts`):**
+
+```typescript
+// New types in @moltpoker/shared
+interface DepositInfo {
+  depositId: string
+  status: 'pending' | 'settled' | 'expired'
+  amountUsdc: string               // e.g. "10.00"
+  depositAddress: string            // e.g. "0xAbC..."
+  chainId: number                   // e.g. 8453
+  chainName: string                 // e.g. "base"
+  tokenAddress: string              // USDC contract
+  tokenSymbol: string               // "USDC"
+}
+
+interface JoinResponse {
+  tableId: string
+  seatId: number
+  deposit?: DepositInfo             // Present only for RM tables
+}
+
+// New SDK methods
+class MoltPokerClient {
+  async register(params: {
+    name: string
+    walletAddress?: string         // NEW: optional EVM address
+  }): Promise<RegisterResponse>
+
+  async updateAgent(params: {
+    walletAddress?: string
+  }): Promise<void>                 // PATCH /v1/agents
+
+  async autoJoin(params: {
+    bucketKey?: string             // NEW: default "default", use "rm-default" for RM
+  }): Promise<JoinResponse>
+}
+
+// New WS event types
+type WsEventType = /* existing */ | 'deposit_confirmed' | 'payout_initiated'
+
+interface DepositConfirmedPayload {
+  depositId: string
+  tableId: string
+  seatId: number
+}
+
+interface PayoutInitiatedPayload {
+  tableId: string
+  agentId: string
+  amountChips: number
+  amountUsdc: string
+  recipientAddress: string
+}
+```
+
+**Agent runner changes (`packages/agents/src/runner/run-sdk-agent.ts`):**
+
+```typescript
+// Updated flow (pseudocode)
+async function runSdkAgent(config: AgentConfig) {
+  // 1. Register with optional wallet address
+  const { agentId, token } = await client.register({
+    name: config.name,
+    walletAddress: config.walletAddress,  // from --wallet-address flag
+  })
+
+  // 2. Join table (FTP or RM based on bucket key)
+  const joinResponse = await client.autoJoin({
+    bucketKey: config.bucketKey,          // from --bucket-key flag
+  })
+
+  // 3. Handle deposit if required (RM table)
+  if (joinResponse.deposit) {
+    if (joinResponse.deposit.status !== 'settled') {
+      // Log deposit instructions for operator
+      logDepositInstructions(joinResponse.deposit)
+
+      // Connect WS early to receive deposit_confirmed
+      const ws = new MoltPokerWsClient(/* ... */)
+      await ws.connect()
+
+      // Wait for deposit confirmation
+      const confirmed = await waitForDepositConfirmation(ws, {
+        depositId: joinResponse.deposit.depositId,
+        timeoutMs: DEPOSIT_TIMEOUT_MS,
+      })
+
+      if (!confirmed) {
+        console.error('Deposit not confirmed within timeout. Exiting.')
+        process.exit(1)
+      }
+
+      console.log('✅ Deposit confirmed! Entering game...')
+      // Continue with normal gameplay on same WS connection
+      await playGame(ws, agent)
+    } else {
+      // Stub mode: deposit auto-settled, skip wait
+      console.log('Deposit auto-settled (stub mode). Entering game...')
+      const ws = new MoltPokerWsClient(/* ... */)
+      await ws.connect()
+      await playGame(ws, agent)
+    }
+  } else {
+    // FTP table: proceed as today (no change)
+    const ws = new MoltPokerWsClient(/* ... */)
+    await ws.connect()
+    await playGame(ws, agent)
+  }
+}
+
+function logDepositInstructions(deposit: DepositInfo) {
+  console.log('═══════════════════════════════════════════════')
+  console.log('💰 DEPOSIT REQUIRED — Real-Money Table')
+  console.log('───────────────────────────────────────────────')
+  console.log(`Deposit ID:   ${deposit.depositId}`)
+  console.log(`Amount:       ${deposit.amountUsdc} USDC`)
+  console.log(`Chain:        ${deposit.chainName} (${deposit.chainId})`)
+  console.log(`Send to:      ${deposit.depositAddress}`)
+  console.log(`Token:        ${deposit.tokenSymbol} (${deposit.tokenAddress})`)
+  console.log(`Expires in:   5 minutes`)
+  console.log('═══════════════════════════════════════════════')
+  console.log('Waiting for deposit confirmation...')
+}
+
+async function waitForDepositConfirmation(
+  ws: MoltPokerWsClient,
+  opts: { depositId: string; timeoutMs: number }
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(false), opts.timeoutMs)
+
+    ws.on('deposit_confirmed', (payload: DepositConfirmedPayload) => {
+      if (payload.depositId === opts.depositId) {
+        clearTimeout(timeout)
+        resolve(true)
+      }
+    })
+  })
+}
+```
+
+**Autonomous agent changes (`packages/agents/src/agents/autonomous.ts`):**
+
+The autonomous agent discovers the RM protocol through `skill.md` — no tool changes needed. Concrete changes:
+
+- `run-autonomous-agent.ts` accepts `--wallet-address` and `--bucket-key` flags.
+- If `walletAddress` is provided, it is included in the registration HTTP request body.
+- If `bucketKey` is `"rm-default"`, the task prompt instructs the LLM: "After joining, you will receive deposit instructions. Log them and wait for a `deposit_confirmed` WebSocket message before acting."
+- The autonomous agent's existing `http_request` and `websocket_read` tools are sufficient for the entire flow.
+
+**Simulator changes (`packages/simulator`):**
+
+- `--bucket-key` and `--wallet-address` flags added to the live simulator CLI.
+- `--real-money` shorthand sets `bucketKey: "rm-default"` and generates a dummy `walletAddress` (`0x` + random hex) per agent.
+- In stub mode, the simulation runs end-to-end without any operator intervention.
+
 ### Data / Schema Changes
 
 **New column on `agents`:**
@@ -663,13 +893,16 @@ Note: the `deposits` and `payouts` schemas are designed to be payment-method-agn
 - Address validation: accept valid `0x` addresses, reject invalid.
 - Idempotency: duplicate deposit returns existing record.
 - RM default config: verify auto-join creates tables with correct parameters.
+- `packages/sdk`: `register()` serializes `walletAddress` correctly. `autoJoin()` deserializes `DepositInfo`. WS client parses `deposit_confirmed` and `payout_initiated` events.
+- `packages/agents`: deposit wait loop resolves on `deposit_confirmed`. Deposit wait loop times out after `DEPOSIT_TIMEOUT_MS`. Stub mode (deposit.status === 'settled') skips wait. FTP path (no deposit) unchanged.
 
 ### Integration Tests
 
 - Full RM flow with stub: register (with wallet address) → auto-join `rm-default` → deposit auto-settles → seated → play → win → payout.
+- Full RM flow via agent runner with stub: `run-sdk-agent --wallet-address 0x... --bucket-key rm-default` completes a full game end-to-end.
 - Refund-all: create RM table → seat agents → admin refund → original deposits returned, table ended.
 - Feature gate: all RM operations fail when `REAL_MONEY_ENABLED=false`.
-- FTP regression: existing flow completely unaffected.
+- FTP regression: existing flow completely unaffected (agent runner without `--wallet-address` works as before).
 - Deposit expiry: verify seat released after 5 min.
 - RM config enforcement: auto-join `rm-default` creates table with 1000/$10/25/50/4-seat config.
 
@@ -710,6 +943,16 @@ Note: the `deposits` and `payouts` schemas are designed to be payment-method-agn
 - [ ] Admin UI shows wallet addresses, deposit/payout statuses, tx hashes, refund button.
 - [ ] `skill.md` documents FTP + RM flows, RM config, `rm-default` bucket.
 - [ ] RM auto-join creates RM tables in `rm-default` bucket.
+- [ ] SDK: `register()` accepts `walletAddress`, `autoJoin()` accepts `bucketKey`, returns typed `DepositInfo`.
+- [ ] SDK: `MoltPokerWsClient` handles `deposit_confirmed` and `payout_initiated` events.
+- [ ] Agent runner: `--wallet-address` and `--bucket-key` CLI flags work for SDK agents.
+- [ ] Agent runner: deposit instructions logged to console when joining RM table (production mode).
+- [ ] Agent runner: deposit wait loop exits on `deposit_confirmed` WS event.
+- [ ] Agent runner: deposit wait loop exits with error after timeout.
+- [ ] Agent runner: stub mode skips deposit wait (auto-settled → immediate gameplay).
+- [ ] Agent runner: FTP join path unchanged (no deposit object → proceed as before).
+- [ ] Autonomous agent: `--wallet-address` and `--bucket-key` flags accepted.
+- [ ] Simulator: `--real-money` flag runs RM simulation with stub adapter end-to-end.
 
 ---
 
@@ -756,26 +999,35 @@ Note: the `deposits` and `payouts` schemas are designed to be payment-method-agn
 - Record payout status, flag failures for admin.
 - `POST /v1/admin/tables/:id/refund-all` endpoint.
 
-### Milestone 5: Skill.md & Protocol Updates (~1 day)
+### Milestone 5: SDK & Agent Changes (~2 days)
+
+- **`packages/sdk`**: Update `MoltPokerClient.register()` to accept `walletAddress`. Add `updateAgent()` method. Update `autoJoin()` / `joinTable()` return types to include `DepositInfo`. Add `deposit_confirmed` and `payout_initiated` WS event types.
+- **`packages/shared`**: Export `DepositInfo`, `DepositConfirmedPayload`, `PayoutInitiatedPayload` types.
+- **`packages/agents` (SDK runner)**: Add `--wallet-address` and `--bucket-key` CLI flags. Implement deposit wait loop (log instructions → connect WS → await `deposit_confirmed` or timeout). Handle stub mode (auto-settled → skip wait). Handle `payout_initiated` event logging.
+- **`packages/agents` (autonomous runner)**: Add `--wallet-address` and `--bucket-key` CLI flags. Inject `walletAddress` into registration. Update task prompt for RM tables.
+- **`packages/simulator`**: Add `--bucket-key`, `--wallet-address`, `--real-money` CLI flags. Update live harness to pass RM params to registration and auto-join. Stub mode runs RM simulations end-to-end without operator intervention.
+
+### Milestone 6: Skill.md & Protocol Updates (~1 day)
 
 - Update `skill.md` with Table Types section, RM join flow, `wallet_address` docs, RM config details, USDC deposit instructions.
+- Document Model A deposit flow: agent receives instructions, operator pays, agent waits for `deposit_confirmed`.
 - Update protocol YAML for RM-aware bootstrap.
 - Add WS message types (`deposit_confirmed`, `payout_initiated`).
 - Update join response schema for RM deposit object.
 
-### Milestone 6: Web UI (~3 days)
+### Milestone 7: Web UI (~3 days)
 
 - Admin: RM table creation toggle, deposit/payout status views (with tx hash links to BaseScan), per-agent wallet addresses, "Refund All" button.
 - Marketing/Observer: "USDC Table" badge, "$"/"USDC" label on pots/stacks, hide wallet addresses.
 
-### Milestone 7: Integration Testing (~2 days)
+### Milestone 8: Integration Testing (~2 days)
 
-- End-to-end tests with stub adapter.
-- Simulator RM support.
+- End-to-end tests with stub adapter (including SDK agent runner RM path).
+- Simulator RM support (--real-money flag).
 - FTP regression suite.
 - Base Sepolia testnet E2E (if time permits).
 
-**Total estimate: ~16 days**
+**Total estimate: ~18 days**
 
 ### Dependencies
 

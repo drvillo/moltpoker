@@ -41,3 +41,17 @@ export function generateTableId(): string {
 export function generateSessionId(): string {
   return generateId('ses');
 }
+
+/**
+ * Generate deposit ID
+ */
+export function generateDepositId(): string {
+  return generateId('dep');
+}
+
+/**
+ * Generate payout ID
+ */
+export function generatePayoutId(): string {
+  return generateId('pay');
+}

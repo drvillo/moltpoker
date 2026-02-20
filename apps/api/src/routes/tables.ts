@@ -19,6 +19,7 @@ import { tableManager } from '../table/manager.js';
 import { startTableRuntime } from '../table/startTable.js';
 import { generateSessionId } from '../utils/crypto.js';
 import { broadcastManager } from '../ws/broadcastManager.js';
+import { createDepositForTable, checkPaymentSystemHealth } from '../payments/paymentService.js';
 
 /**
  * Assign a seat to an agent and create a session.
@@ -138,6 +139,7 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
           playerCount,
           created_at: new Date(table.created_at),
           bucket_key: table.bucket_key ?? 'default',
+          realMoney: tableConfig.realMoney ?? false,
         });
       }
 
@@ -199,6 +201,7 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
           playerCount,
           created_at: table.created_at,
           bucket_key: table.bucket_key ?? 'default',
+          realMoney: tableConfig.realMoney ?? false,
         });
       } catch (err) {
         fastify.log.error(err, 'Failed to get table details');
@@ -348,7 +351,7 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
           await checkAndAutoStart(tableId, tableConfig, fastify.log);
         }
 
-        return reply.status(200).send({
+        const response: Record<string, unknown> = {
           table_id: tableId,
           seat_id: seatId,
           session_token: sessionToken,
@@ -357,7 +360,31 @@ export function registerTableRoutes(fastify: FastifyInstance): void {
           min_supported_protocol_version: MIN_SUPPORTED_PROTOCOL_VERSION,
           skill_doc_url: config.skillDocUrl,
           action_timeout_ms: tableConfig.actionTimeoutMs,
-        });
+        };
+
+        // If this is a real money table, add deposit instructions
+        if (tableConfig.realMoney && config.realMoneyEnabled) {
+          // Check payment system health
+          const paymentHealthy = await checkPaymentSystemHealth();
+          if (!paymentHealthy) {
+            return reply.status(503).send({
+              error: {
+                code: ErrorCodes.PAYMENT_SYSTEM_UNAVAILABLE,
+                message: 'Payment system is currently unavailable',
+              },
+            });
+          }
+
+          // Create deposit for this table/agent
+          const buyInUsdc = tableConfig.initialStack / 100; // 1 chip = $0.01 USDC
+          const depositResult = await createDepositForTable(tableId, agentId, seatId, buyInUsdc);
+          
+          if (depositResult) {
+            response.deposit = depositResult.instructions;
+          }
+        }
+
+        return reply.status(200).send(response);
       } catch (err) {
         fastify.log.error(err, 'Failed to join table');
         return reply.status(500).send({

@@ -69,6 +69,8 @@ export const WelcomePayloadSchema = z.object({
   seat_id: z.number().int().min(0).max(9),
   agent_id: z.string(),
   action_timeout_ms: z.number().int().positive(),
+  deposit_status: z.string().optional(),
+  real_money: z.boolean().optional(),
 });
 
 /**
@@ -128,6 +130,32 @@ export const PongPayloadSchema = z.object({
 });
 
 /**
+ * Schema for deposit confirmed payload
+ */
+export const DepositConfirmedPayloadSchema = z.object({
+  deposit_id: z.string(),
+  table_id: z.string(),
+  seat_id: z.number().int().min(0).max(9),
+  agent_id: z.string(),
+  amount_usdc: z.number(),
+  tx_hash: z.string(),
+  confirmed_at: z.string(),
+});
+
+/**
+ * Schema for payout initiated payload
+ */
+export const PayoutInitiatedPayloadSchema = z.object({
+  payout_id: z.string(),
+  table_id: z.string(),
+  seat_id: z.number().int().min(0).max(9),
+  agent_id: z.string(),
+  amount_usdc: z.number(),
+  tx_hash: z.string().optional(),
+  status: z.string(),
+});
+
+/**
  * Schema for table status payload (sent when waiting or when table ends)
  */
 const TableStatusPlayerPayloadSchema = z.object({
@@ -136,6 +164,7 @@ const TableStatusPlayerPayloadSchema = z.object({
   agent_id: z.string(),
   min_players_to_start: z.number().int().min(2),
   current_players: z.number().int().min(0),
+  real_money: z.boolean().optional(),
 });
 
 const TableStatusEndedPayloadSchema = z.object({
@@ -182,6 +211,8 @@ export const WsMessageTypeSchema = z.enum([
   'player_joined',
   'player_left',
   'table_status',
+  'deposit_confirmed',
+  'payout_initiated',
 ]);
 
 /**

@@ -417,7 +417,7 @@ No GitHub Actions workflow is needed for the web app.
 
 ### Full Example
 
-See `.env.production.example` at the repo root for a complete, copy-paste-ready template.
+See `.env.example` at the repo root for a complete, copy-paste-ready template.
 
 ---
 
@@ -557,7 +557,7 @@ Costs increase with traffic and instance size. App Runner's pay-per-use model (p
 | `amplify.yml` | Amplify build spec for the Next.js monorepo |
 | `infra/cloudformation.yaml` | CloudFormation template for all AWS resources |
 | `.github/workflows/deploy-api.yml` | CI/CD pipeline: build Docker image → push to ECR |
-| `.env.production.example` | Reference for all production environment variables |
+| `.env.example` | Reference for all environment variables (dev and production) |
 | `docs/DEPLOYMENT.md` | This document |
 
 ### Code Changes

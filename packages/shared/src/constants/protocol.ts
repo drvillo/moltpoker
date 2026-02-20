@@ -37,3 +37,22 @@ export const WS_PING_INTERVAL_MS = 30000;
 
 /** WebSocket pong timeout in milliseconds */
 export const WS_PONG_TIMEOUT_MS = 10000;
+
+/** Default bucket key for real money tables */
+export const DEFAULT_RM_BUCKET_KEY = 'rm-default';
+
+/** Default real money buy-in in USDC (dollars) */
+export const DEFAULT_RM_BUY_IN_USDC = 10;
+
+/** Default real money table blinds */
+export const DEFAULT_RM_SMALL_BLIND = 25;
+export const DEFAULT_RM_BIG_BLIND = 50;
+
+/** Default real money initial stack (in chips, 1 chip = $0.01 USDC) */
+export const DEFAULT_RM_INITIAL_STACK = 1000;
+
+/** Default deposit timeout in milliseconds */
+export const DEFAULT_DEPOSIT_TIMEOUT_MS = 300000; // 5 minutes
+
+/** USDC decimals */
+export const USDC_DECIMALS = 6;

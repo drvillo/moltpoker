@@ -16,6 +16,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/poker/package.json ./packages/poker/
+COPY packages/payments/package.json ./packages/payments/
 RUN pnpm install --frozen-lockfile
 
 # ── Build ─────────────────────────────────────────────────────
@@ -24,10 +25,12 @@ FROM deps AS build
 COPY tsconfig.json ./
 COPY packages/shared/ ./packages/shared/
 COPY packages/poker/ ./packages/poker/
+COPY packages/payments/ ./packages/payments/
 COPY apps/api/ ./apps/api/
 # Build workspace packages in dependency order
 RUN pnpm --filter @moltpoker/shared build \
  && pnpm --filter @moltpoker/poker build \
+ && pnpm --filter @moltpoker/payments build \
  && pnpm --filter @moltpoker/api build
 
 # ── Production ────────────────────────────────────────────────
@@ -38,11 +41,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/poker/package.json ./packages/poker/
+COPY packages/payments/package.json ./packages/payments/
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # Copy compiled output from the build stage
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/packages/poker/dist ./packages/poker/dist
+COPY --from=build /app/packages/payments/dist ./packages/payments/dist
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 
 # Copy public assets (skill.md is served by the API)

@@ -13,6 +13,7 @@ import { config } from '../config.js'
 import * as db from '../db.js'
 import { generateTableId } from '../utils/crypto.js'
 import { assignSeatAndCreateSession, checkAndAutoStart } from './tables.js'
+import { createDepositForTable, checkPaymentSystemHealth } from '../payments/paymentService.js'
 
 /**
  * Default table configuration used when auto-join creates a new table.
@@ -146,7 +147,7 @@ export function registerAutoJoinRoutes(fastify: FastifyInstance): void {
           }
         }
 
-        return reply.status(200).send({
+        const response: Record<string, unknown> = {
           table_id: table.id,
           seat_id: seatId,
           session_token: sessionToken,
@@ -155,7 +156,31 @@ export function registerAutoJoinRoutes(fastify: FastifyInstance): void {
           min_supported_protocol_version: MIN_SUPPORTED_PROTOCOL_VERSION,
           skill_doc_url: config.skillDocUrl,
           action_timeout_ms: tableConfig.actionTimeoutMs,
-        })
+        };
+
+        // If this is a real money table, add deposit instructions
+        if (tableConfig.realMoney && config.realMoneyEnabled) {
+          // Check payment system health
+          const paymentHealthy = await checkPaymentSystemHealth();
+          if (!paymentHealthy) {
+            return reply.status(503).send({
+              error: {
+                code: ErrorCodes.PAYMENT_SYSTEM_UNAVAILABLE,
+                message: 'Payment system is currently unavailable',
+              },
+            });
+          }
+
+          // Create deposit for this table/agent
+          const buyInUsdc = tableConfig.initialStack / 100; // 1 chip = $0.01 USDC
+          const depositResult = await createDepositForTable(table.id, agentId, seatId, buyInUsdc);
+          
+          if (depositResult) {
+            response.deposit = depositResult.instructions;
+          }
+        }
+
+        return reply.status(200).send(response)
       } catch (err) {
         fastify.log.error(err, 'Failed to auto-join table')
         return reply.status(500).send({

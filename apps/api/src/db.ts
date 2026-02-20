@@ -368,6 +368,156 @@ export async function getLastEventSeq(tableId: string): Promise<number> {
   return data?.seq ?? 0;
 }
 
+// Deposit operations
+export async function createDeposit(
+  id: string,
+  tableId: string,
+  agentId: string,
+  seatId: number,
+  amountUsdc: number,
+  expectedAmountUsdc: number,
+  chainId: number,
+  tokenAddress: string,
+  vaultAddress: string,
+  expiresAt: Date
+) {
+  const { data, error } = await getDb()
+    .from('deposits')
+    .insert({
+      id,
+      table_id: tableId,
+      agent_id: agentId,
+      seat_id: seatId,
+      status: 'pending',
+      amount_usdc: amountUsdc,
+      expected_amount_usdc: expectedAmountUsdc,
+      chain_id: chainId,
+      token_address: tokenAddress,
+      vault_address: vaultAddress,
+      expires_at: expiresAt.toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getDeposit(depositId: string) {
+  const { data, error } = await getDb()
+    .from('deposits')
+    .select()
+    .eq('id', depositId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
+export async function getDepositByTableAndAgent(tableId: string, agentId: string) {
+  const { data, error } = await getDb()
+    .from('deposits')
+    .select()
+    .eq('table_id', tableId)
+    .eq('agent_id', agentId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
+export async function updateDepositStatus(
+  depositId: string,
+  status: string,
+  vaultTxHash?: string,
+  vaultEventName?: string,
+  vaultEventIndex?: number,
+  confirmationBlock?: number,
+  actualAmount?: number
+) {
+  const updateData: Record<string, unknown> = { status };
+  if (vaultTxHash) updateData.vault_tx_hash = vaultTxHash;
+  if (vaultEventName) updateData.vault_event_name = vaultEventName;
+  if (vaultEventIndex !== undefined) updateData.vault_event_index = vaultEventIndex;
+  if (confirmationBlock !== undefined) updateData.confirmation_block = confirmationBlock;
+  if (actualAmount !== undefined) updateData.amount_usdc = actualAmount;
+
+  const { data, error } = await getDb()
+    .from('deposits')
+    .update(updateData)
+    .eq('id', depositId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function listExpiredDeposits() {
+  const { data, error } = await getDb()
+    .from('deposits')
+    .select()
+    .eq('status', 'pending')
+    .lt('expires_at', new Date().toISOString());
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function listPendingConfirmationDeposits() {
+  const { data, error } = await getDb()
+    .from('deposits')
+    .select()
+    .eq('status', 'pending_confirmation');
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getDepositsByTable(tableId: string) {
+  const { data, error } = await getDb()
+    .from('deposits')
+    .select()
+    .eq('table_id', tableId);
+
+  if (error) throw error;
+  return data || [];
+}
+
+// Payout operations
+export async function createPayout(
+  id: string,
+  tableId: string,
+  agentId: string,
+  seatId: number,
+  settlementType: 'payout' | 'refund',
+  amountUsdc: number,
+  finalStack?: number
+) {
+  const { data, error } = await getDb()
+    .from('payouts')
+    .insert({
+      id,
+      table_id: tableId,
+      agent_id: agentId,
+      seat_id: seatId,
+      settlement_type: settlementType,
+      status: 'pending',
+      amount_usdc: amountUsdc,
+      final_stack: finalStack ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getPayout(payoutId: string) {
+  const { data, error } = await getDb()
+    .from('payouts')
+    .select()
+    .eq('id', payoutId)
 /**
  * Get the latest TABLE_ENDED event for a table (for backfilling seat stacks).
  */
@@ -385,4 +535,73 @@ export async function getLatestTableEndedEvent(tableId: string): Promise<{
 
   if (error && error.code !== 'PGRST116') throw error;
   return data;
+}
+
+export async function getPayoutsByTable(tableId: string) {
+  const { data, error } = await getDb()
+    .from('payouts')
+    .select()
+    .eq('table_id', tableId);
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function updatePayoutStatus(
+  payoutId: string,
+  status: string,
+  vaultTxHash?: string,
+  vaultEventName?: string,
+  vaultEventIndex?: number,
+  confirmationBlock?: number,
+  settlementBatchId?: string,
+  errorMessage?: string
+) {
+  const updateData: Record<string, unknown> = { status };
+  if (vaultTxHash) updateData.vault_tx_hash = vaultTxHash;
+  if (vaultEventName) updateData.vault_event_name = vaultEventName;
+  if (vaultEventIndex !== undefined) updateData.vault_event_index = vaultEventIndex;
+  if (confirmationBlock !== undefined) updateData.confirmation_block = confirmationBlock;
+  if (settlementBatchId) updateData.settlement_batch_id = settlementBatchId;
+  if (errorMessage) updateData.error_message = errorMessage;
+
+  const { data, error } = await getDb()
+    .from('payouts')
+    .update(updateData)
+    .eq('id', payoutId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function listPendingPayouts() {
+  const { data, error } = await getDb()
+    .from('payouts')
+    .select()
+    .eq('status', 'pending');
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function listPendingConfirmationPayouts() {
+  const { data, error } = await getDb()
+    .from('payouts')
+    .select()
+    .eq('status', 'pending_confirmation');
+
+  if (error) throw error;
+  return data || [];
+}
+
+// Agent payout address operations
+export async function updateAgentPayoutAddress(agentId: string, payoutAddress: string) {
+  const { error } = await getDb()
+    .from('agents')
+    .update({ payout_address: payoutAddress })
+    .eq('id', agentId);
+
+  if (error) throw error;
 }

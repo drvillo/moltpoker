@@ -21,6 +21,7 @@ export default defineConfig({
       '@moltpoker/sdk': resolve(__dirname, 'packages/sdk/src'),
       '@moltpoker/agents': resolve(__dirname, 'packages/agents/src'),
       '@moltpoker/simulator': resolve(__dirname, 'packages/simulator/src'),
+      '@moltpoker/payments': resolve(__dirname, 'packages/payments/src'),
     },
   },
 });

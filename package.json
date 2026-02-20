@@ -6,12 +6,14 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
+    "lint": "pnpm -r run lint",
     "dev:api": "pnpm --filter @moltpoker/api dev",
     "dev:web": "pnpm --filter @moltpoker/web dev",
     "clean": "pnpm -r clean && rm -rf node_modules",
     "run:api:docker": "./scripts/run-api-docker.sh",
     "db:migrate": "supabase db push",
     "db:reset": "supabase db reset",
+    "local:start": "./scripts/deploy-local-dev.sh",
     "test": "vitest run"
   },
   "keywords": [

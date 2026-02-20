@@ -4,7 +4,7 @@
 #
 # Prerequisites:
 #   - docker build -f apps/api/Dockerfile -t moltpoker-api .
-#   - .env.local at repo root with required variables (see .env.production.example)
+#   - .env.local at repo root with required variables (see .env.example)
 
 set -e
 
@@ -14,7 +14,7 @@ ENV_FILE="$REPO_ROOT/.env.local"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Error: .env.local not found at $ENV_FILE"
-  echo "Copy .env.production.example to .env.local and fill in your values."
+  echo "Copy .env.example to .env.local and fill in your values."
   exit 1
 fi
 
