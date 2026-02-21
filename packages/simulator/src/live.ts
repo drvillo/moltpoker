@@ -56,6 +56,8 @@ export interface LiveSimulatorOptions {
   /** Parsed agent slots (type + optional model). Cycled when agentCount > slots.length. */
   agentSlots: AgentSlot[];
   handsToPlay: number;
+  /** Maximum duration to wait for a run to complete (ms). */
+  maxRunDurationMs?: number;
   tableConfig?: {
     blinds?: { small: number; big: number };
     initialStack?: number;
@@ -345,12 +347,13 @@ export class LiveSimulator {
 
     let handsCompleted = 0;
     const targetHands = this.options.handsToPlay;
+    const maxRunDurationMs = this.options.maxRunDurationMs ?? 120000;
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         ws.close();
         resolve(handsCompleted); // Return what we got
-      }, 120000); // 2 minute safety timeout
+      }, maxRunDurationMs);
 
       ws.onopen = () => {};
 
@@ -397,7 +400,11 @@ export class LiveSimulator {
       length: 2,
       style: 'capital',
     });
-    const displayName = `${baseName} (${agentType})`;
+    const nameSuffix =
+      agentType === 'protocol'
+        ? resolvedModel ?? agentType
+        : agentType;
+    const displayName = `${baseName} (${nameSuffix})`;
 
     const args = [
       agentBin,

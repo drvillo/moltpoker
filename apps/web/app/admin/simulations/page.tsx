@@ -122,7 +122,7 @@ export default function SimulationsPage() {
                       : 'One-off'}
                   </td>
                   <td className="px-4 py-3 text-gray-500">
-                    {sim.agent_count} agents · {sim.max_hands} hands
+                    {sim.agent_count} agents · {sim.max_hands} hands · {sim.max_run_minutes}m max
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={statusBadgeVariant(sim.status)}>{sim.status}</Badge>

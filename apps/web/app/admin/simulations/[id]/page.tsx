@@ -20,67 +20,108 @@ function runStatusVariant(status: string) {
   return 'error' as const
 }
 
-function LogViewer({ runId }: { runId: string }) {
+function RunRow({ run }: { run: SimulationRun }) {
   const [logs, setLogs] = useState<RunLogFile[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [expired, setExpired] = useState(false)
-  const [open, setOpen] = useState(false)
+  const [logsOpen, setLogsOpen] = useState(false)
+
+  const startedAt = new Date(run.started_at)
+  const completedAt = run.completed_at ? new Date(run.completed_at) : null
+  const durationMs = completedAt ? completedAt.getTime() - startedAt.getTime() : null
+  const durationStr = durationMs
+    ? durationMs < 60000
+      ? `${Math.round(durationMs / 1000)}s`
+      : `${Math.round(durationMs / 60000)}m`
+    : run.status === 'running'
+    ? '(running)'
+    : '—'
 
   async function fetchLogs() {
     setLoading(true)
     try {
-      const data = await simulationApi.getRunLogs(runId)
+      const data = await simulationApi.getRunLogs(run.id)
       setLogs(data.files)
     } catch (err: unknown) {
       const apiErr = err as { error?: { code?: string } }
-      if (apiErr?.error?.code === 'LOGS_EXPIRED') {
-        setExpired(true)
-      }
+      if (apiErr?.error?.code === 'LOGS_EXPIRED') setExpired(true)
     } finally {
       setLoading(false)
     }
   }
 
   function handleToggle() {
-    if (!open && logs === null && !expired) fetchLogs()
-    setOpen(!open)
+    if (!logsOpen && logs === null && !expired) fetchLogs()
+    setLogsOpen(!logsOpen)
   }
 
   return (
-    <div>
-      <button
-        onClick={handleToggle}
-        className="text-sm text-blue-600 hover:underline dark:text-blue-400"
-      >
-        {open ? 'Hide Logs' : 'View Logs'}
-      </button>
-      {open && (
-        <div className="mt-2 space-y-2">
-          {loading && <p className="text-xs text-gray-500">Loading logs...</p>}
-          {expired && (
-            <p className="text-xs text-gray-400 italic">
-              Logs expired (rotated or container restarted).
-            </p>
+    <>
+      <tr>
+        <td className="px-4 py-3 font-mono text-xs text-gray-500">{run.id}</td>
+        <td className="px-4 py-3">
+          <div className="flex flex-col gap-0.5">
+            <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
+            {run.error && <span className="text-xs text-red-500">{run.error}</span>}
+          </div>
+        </td>
+        <td className="px-4 py-3">{run.hands_played}</td>
+        <td className="px-4 py-3">
+          {run.table_id ? (
+            <Link
+              href={`/admin/tables/${run.table_id}`}
+              className="text-blue-600 hover:underline dark:text-blue-400 font-mono text-xs"
+            >
+              {run.table_id.slice(0, 8)}…
+            </Link>
+          ) : (
+            <span className="text-gray-400">—</span>
           )}
-          {logs && logs.length === 0 && (
-            <p className="text-xs text-gray-400 italic">No log files found.</p>
-          )}
-          {logs &&
-            logs.map((file) => (
-              <details key={file.name} className="rounded border border-gray-200 dark:border-gray-700">
-                <summary className="cursor-pointer px-3 py-2 text-xs font-mono text-gray-600 dark:text-gray-300 select-none">
-                  {file.name} ({file.entries.length} entries)
-                </summary>
-                <pre className="max-h-64 overflow-auto bg-gray-50 p-3 text-xs dark:bg-gray-900">
-                  {file.entries.map((entry, i) => (
-                    <div key={i}>{JSON.stringify(entry)}</div>
-                  ))}
-                </pre>
-              </details>
-            ))}
-        </div>
+        </td>
+        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{startedAt.toLocaleString()}</td>
+        <td className="px-4 py-3 text-gray-500">{durationStr}</td>
+        <td className="px-4 py-3">
+          <button
+            onClick={handleToggle}
+            className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {logsOpen ? 'Hide Logs' : 'View Logs'}
+          </button>
+        </td>
+      </tr>
+      {logsOpen && (
+        <tr>
+          <td colSpan={7} className="max-w-0 overflow-hidden px-4 pb-4 pt-0">
+            <div className="w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
+              {loading && <p className="p-3 text-xs text-gray-500">Loading logs...</p>}
+              {expired && (
+                <p className="p-3 text-xs italic text-gray-400">
+                  Logs expired (rotated or container restarted).
+                </p>
+              )}
+              {logs && logs.length === 0 && (
+                <p className="p-3 text-xs italic text-gray-400">No log files found.</p>
+              )}
+              {logs &&
+                logs.map((file) => (
+                  <details key={file.name} className="border-b border-gray-200 last:border-0 dark:border-gray-700">
+                    <summary className="cursor-pointer px-3 py-2 text-xs font-mono text-gray-600 dark:text-gray-300 select-none hover:bg-gray-100 dark:hover:bg-gray-800">
+                      {file.name} ({file.entries.length} entries)
+                    </summary>
+                    <pre className="max-h-80 w-full overflow-auto whitespace-pre-wrap break-all bg-white p-3 text-xs dark:bg-gray-950">
+                      {file.entries.map((entry, i) => (
+                        <div key={i} className="border-b border-gray-100 py-0.5 dark:border-gray-800">
+                          {JSON.stringify(entry)}
+                        </div>
+                      ))}
+                    </pre>
+                  </details>
+                ))}
+            </div>
+          </td>
+        </tr>
       )}
-    </div>
+    </>
   )
 }
 
@@ -187,7 +228,7 @@ export default function SimulationDetailPage() {
           )}
           </div>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {sim.agent_count} agents · {sim.max_hands} hands ·{' '}
+            {sim.agent_count} agents · {sim.max_hands} hands · max {sim.max_run_minutes}m/run ·{' '}
             {isPeriodic ? `Every ${sim.interval_minutes}m (cooldown ${sim.cooldown_minutes}m)` : 'One-off'}
           </p>
         </div>
@@ -232,6 +273,10 @@ export default function SimulationDetailPage() {
             {sim.table_config.actionTimeoutMs / 1000}s
           </div>
           <div>
+            <span className="font-medium text-gray-600 dark:text-gray-400">Max Run Duration:</span>{' '}
+            {sim.max_run_minutes}m
+          </div>
+          <div>
             <span className="font-medium text-gray-600 dark:text-gray-400">Bucket Key:</span>{' '}
             <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">{sim.bucket_key}</code>
           </div>
@@ -269,52 +314,9 @@ export default function SimulationDetailPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {sim.runs.map((run: SimulationRun) => {
-                const startedAt = new Date(run.started_at)
-                const completedAt = run.completed_at ? new Date(run.completed_at) : null
-                const durationMs = completedAt ? completedAt.getTime() - startedAt.getTime() : null
-                const durationStr = durationMs
-                  ? durationMs < 60000
-                    ? `${Math.round(durationMs / 1000)}s`
-                    : `${Math.round(durationMs / 60000)}m`
-                  : run.status === 'running'
-                  ? '(running)'
-                  : '—'
-
-                return (
-                  <tr key={run.id}>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{run.id}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
-                        {run.error && (
-                          <span className="text-xs text-red-500">{run.error}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">{run.hands_played}</td>
-                    <td className="px-4 py-3">
-                      {run.table_id ? (
-                        <Link
-                          href={`/admin/tables/${run.table_id}`}
-                          className="text-blue-600 hover:underline dark:text-blue-400 font-mono text-xs"
-                        >
-                          {run.table_id.slice(0, 8)}…
-                        </Link>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                      {startedAt.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">{durationStr}</td>
-                    <td className="px-4 py-3">
-                      <LogViewer runId={run.id} />
-                    </td>
-                  </tr>
-                )
-              })}
+              {sim.runs.map((run: SimulationRun) => (
+                <RunRow key={run.id} run={run} />
+              ))}
             </tbody>
           </table>
         )}

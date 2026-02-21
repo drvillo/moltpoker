@@ -262,6 +262,7 @@ export interface SimulationConfig {
   interval_minutes: number | null
   cooldown_minutes: number
   max_hands: number
+  max_run_minutes: number
   agent_count: number
   agent_slots: AgentSlotConfig[]
   table_config: SimTableConfig
@@ -329,6 +330,7 @@ export const simulationApi = {
     agent_slots: AgentSlotConfig[]
     table_config: SimTableConfig
     max_hands: number
+    max_run_minutes: number
     schedule_type: 'one_off' | 'periodic'
     interval_minutes?: number
     cooldown_minutes?: number
@@ -343,7 +345,7 @@ export const simulationApi = {
     return apiRequest<SimulationConfigWithRuns>(`/v1/admin/simulations/${id}`)
   },
 
-  async updateSimulation(id: string, updates: Partial<Pick<SimulationConfig, 'name' | 'status' | 'interval_minutes' | 'cooldown_minutes' | 'max_hands' | 'schedule_type'>>) {
+  async updateSimulation(id: string, updates: Partial<Pick<SimulationConfig, 'name' | 'status' | 'interval_minutes' | 'cooldown_minutes' | 'max_hands' | 'max_run_minutes' | 'schedule_type'>>) {
     return apiRequest<SimulationConfig>(`/v1/admin/simulations/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),

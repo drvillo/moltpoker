@@ -65,6 +65,7 @@ describe('Admin simulation routes - create validation', () => {
       interval_minutes: null,
       cooldown_minutes: 5,
       max_hands: 20,
+      max_run_minutes: 2,
       agent_count: 3,
       agent_slots: [{ type: 'random' }, { type: 'tight' }, { type: 'callstation' }],
       table_config: {

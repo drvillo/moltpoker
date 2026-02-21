@@ -19,7 +19,7 @@ import { config } from '../config.js';
 
 const LOG_BASE_DIR = '/tmp/molt-sim';
 const MAX_LOG_RETENTION = 5;
-const SAFETY_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const RUNNER_SAFETY_BUFFER_MS = 30 * 1000;
 
 // ─── SimulationRunner ─────────────────────────────────────────────────────────
 
@@ -172,6 +172,7 @@ export class SimulationRunner {
 
   private async executeRun(simConfig: SimulationConfig, runId: string, logDir: string): Promise<void> {
     const summaryLogger = createJsonlLogger(path.join(logDir, 'simulation-summary.jsonl'));
+    const runTimeoutMs = (simConfig.max_run_minutes ?? 2) * 60 * 1000;
 
     summaryLogger({
       event: 'simulation_start',
@@ -179,6 +180,7 @@ export class SimulationRunner {
       run_id: runId,
       agent_count: simConfig.agent_count,
       max_hands: simConfig.max_hands,
+      max_run_minutes: simConfig.max_run_minutes,
     });
 
     // Safety timeout
@@ -190,7 +192,7 @@ export class SimulationRunner {
         this.activeSimulator.stop();
         this.activeSimulator = null;
       }
-    }, SAFETY_TIMEOUT_MS);
+    }, runTimeoutMs + RUNNER_SAFETY_BUFFER_MS);
 
     let handsPlayed = 0;
     let runError: string | null = null;
@@ -211,6 +213,7 @@ export class SimulationRunner {
         agentCount: simConfig.agent_count,
         agentSlots: simConfig.agent_slots,
         handsToPlay: simConfig.max_hands,
+        maxRunDurationMs: runTimeoutMs,
         tableConfig: simConfig.table_config,
         bucketKey: simConfig.bucket_key,
         serviceRoleKey: config.supabaseServiceRoleKey,

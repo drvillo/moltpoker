@@ -52,6 +52,7 @@ program
   .option('--blinds <blinds>', 'Blinds (small/big)', '1/2')
   .option('--stack <stack>', 'Initial stack', '1000')
   .option('--timeout <ms>', 'Action timeout in ms', '5000')
+  .option('--max-run-minutes <minutes>', 'Maximum total run duration in minutes', '2')
   .option('--model <provider:model>', 'LLM model for llm/autonomous agents (e.g. openai:gpt-4.1)')
   .option('--skill-doc <path>', 'Path to skill.md for LLM agents', 'public/skill.md')
   .option(
@@ -123,6 +124,7 @@ program
           initialStack: parseInt(options.stack, 10),
           actionTimeoutMs: parseInt(options.timeout, 10),
         },
+        maxRunDurationMs: parseInt(options.maxRunMinutes, 10) * 60 * 1000,
         verbose: options.verbose,
         serviceRoleKey,
         llmModel: options.model,
@@ -138,6 +140,7 @@ program
       if (skillUrl) console.log(`Skill URL: ${skillUrl}`);
       if (runLogDir) console.log(`Log directory: ${runLogDir}`);
       console.log(`Hands: ${options.hands}`);
+      console.log(`Max run duration: ${options.maxRunMinutes}m`);
       console.log(`Server: ${options.server}`);
 
       const result = await simulator.run();

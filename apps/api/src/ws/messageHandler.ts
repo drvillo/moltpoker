@@ -94,9 +94,10 @@ async function handleAction(
   }
 
   const { runtime, eventLogger } = table;
+  const currentSeq = runtime.getSeq();
 
   // Check sequence number if provided
-  if (expectedSeq !== undefined && expectedSeq !== runtime.getSeq()) {
+  if (expectedSeq !== undefined && expectedSeq !== currentSeq) {
     broadcastManager.sendError(tableId, agentId, {
       code: ErrorCodes.STALE_SEQ,
       message: 'Game state has changed. Please refresh.',

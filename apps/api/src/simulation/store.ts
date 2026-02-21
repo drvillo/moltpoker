@@ -21,6 +21,7 @@ export interface SimulationConfig {
   interval_minutes: number | null;
   cooldown_minutes: number;
   max_hands: number;
+  max_run_minutes: number;
   agent_count: number;
   agent_slots: AgentSlotConfig[];
   table_config: TableConfig;
@@ -71,6 +72,7 @@ export async function createSimulationConfig(
       interval_minutes: data.interval_minutes,
       cooldown_minutes: data.cooldown_minutes,
       max_hands: data.max_hands,
+      max_run_minutes: data.max_run_minutes,
       agent_count: data.agent_count,
       agent_slots: data.agent_slots,
       table_config: data.table_config,
@@ -103,7 +105,7 @@ export async function getSimulationConfig(id: string): Promise<SimulationConfig 
 
 export async function updateSimulationConfig(
   id: string,
-  updates: Partial<Pick<SimulationConfig, 'name' | 'status' | 'interval_minutes' | 'cooldown_minutes' | 'max_hands' | 'agent_count' | 'agent_slots' | 'table_config' | 'bucket_key' | 'schedule_type'>>
+  updates: Partial<Pick<SimulationConfig, 'name' | 'status' | 'interval_minutes' | 'cooldown_minutes' | 'max_hands' | 'max_run_minutes' | 'agent_count' | 'agent_slots' | 'table_config' | 'bucket_key' | 'schedule_type'>>
 ): Promise<SimulationConfig> {
   const { data, error } = await getDb()
     .from('simulation_configs')

@@ -100,6 +100,7 @@ export function registerAdminSimulationRoutes(fastify: FastifyInstance): void {
       agent_slots,
       table_config,
       max_hands,
+      max_run_minutes,
       schedule_type,
       interval_minutes,
       cooldown_minutes,
@@ -171,6 +172,7 @@ export function registerAdminSimulationRoutes(fastify: FastifyInstance): void {
         interval_minutes: (interval_minutes as number) ?? null,
         cooldown_minutes: (cooldown_minutes as number) ?? 5,
         max_hands: (max_hands as number) ?? 20,
+        max_run_minutes: (max_run_minutes as number) ?? 2,
         agent_count: agent_count as number,
         agent_slots: agent_slots as Array<{ type: string; model?: string }>,
         table_config: tableConfigResolved,
@@ -228,7 +230,7 @@ export function registerAdminSimulationRoutes(fastify: FastifyInstance): void {
         });
       }
 
-      const allowed = ['name', 'status', 'interval_minutes', 'cooldown_minutes', 'max_hands', 'schedule_type'] as const;
+      const allowed = ['name', 'status', 'interval_minutes', 'cooldown_minutes', 'max_hands', 'max_run_minutes', 'schedule_type'] as const;
       const updates: Record<string, unknown> = {};
       for (const key of allowed) {
         if (body[key] !== undefined) updates[key] = body[key];

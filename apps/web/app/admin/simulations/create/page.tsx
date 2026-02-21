@@ -27,6 +27,7 @@ export default function CreateSimulationPage() {
   const [name, setName] = useState('')
   const [agentCount, setAgentCount] = useState(3)
   const [maxHands, setMaxHands] = useState(20)
+  const [maxRunMinutes, setMaxRunMinutes] = useState(2)
   const [scheduleType, setScheduleType] = useState<'one_off' | 'periodic'>('one_off')
   const [intervalMinutes, setIntervalMinutes] = useState(10)
   const [cooldownMinutes, setCooldownMinutes] = useState(5)
@@ -104,6 +105,7 @@ export default function CreateSimulationPage() {
           actionTimeoutMs,
         },
         max_hands: maxHands,
+        max_run_minutes: maxRunMinutes,
         schedule_type: scheduleType,
         interval_minutes: scheduleType === 'periodic' ? intervalMinutes : undefined,
         cooldown_minutes: cooldownMinutes,
@@ -163,6 +165,16 @@ export default function CreateSimulationPage() {
                 onChange={(e) => handleAgentCountChange(e.target.value)}
                 min={2}
                 max={9}
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Max Run Duration (minutes)</label>
+              <input
+                type="number"
+                value={maxRunMinutes}
+                onChange={(e) => setMaxRunMinutes(Number(e.target.value))}
+                min={1}
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
               />
             </div>
